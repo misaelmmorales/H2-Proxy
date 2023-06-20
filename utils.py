@@ -1,11 +1,11 @@
-#############################################################################################################################
-###################################################### IMPORT PACKAGES ######################################################
-#############################################################################################################################
+########################################################################################################################
+###################################################### IMPORT PACKAGES #################################################
+########################################################################################################################
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from scipy import stats
+from scipy.stats import zscore
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -28,130 +28,170 @@ def check_tensorflow_gpu():
     print(tf.config.list_physical_devices())
     return None
 
-#############################################################################################################################
-###################################################### PLOTS & PRINTS #######################################################
-#############################################################################################################################
-def plot_loss(fit, title='', figsize=None):
-    if figsize:
-        plt.figure(figsize=figsize)
-    loss, val = fit.history['loss'], fit.history['val_loss']
-    epochs = len(loss)
-    iterations = np.arange(epochs)
-    plt.plot(iterations, loss, '-', label='loss')
-    plt.plot(iterations, val, '-', label='validation loss')
-    plt.title(title+' Training: Loss vs epochs'); plt.legend()
-    plt.ylabel('Epochs'); plt.ylabel('Loss'); plt.xticks(iterations[::epochs//10])
-    plt.show()
-    
-def print_metrics(train, trainpred, test, testpred):
-    tot_train_r2,  tot_test_r2  = r2_score(train, trainpred),            r2_score(test, testpred)
-    tot_train_mse, tot_test_mse = mean_squared_error(train, trainpred),  mean_squared_error(test, testpred)
-    tot_train_mae, tot_test_mae = mean_absolute_error(train, trainpred), mean_absolute_error(test, testpred)
-    print('\n')
-    print('TRAIN: R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_train_r2, tot_train_mse, tot_train_mae))
-    print('TEST:  R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_test_r2, tot_test_mse, tot_test_mae))
-    for i in range(3):
-        name = train.columns[i]
-        trainr2,  testr2  = r2_score(train[name], trainpred[name]),            r2_score(test[name], testpred[name])
-        trainmse, testmse = mean_squared_error(train[name], trainpred[name]),  mean_squared_error(test[name], testpred[name])
-        trainmae, testmae = mean_absolute_error(train[name], trainpred[name]), mean_absolute_error(test[name], testpred[name])
-        print('\n')
-        print('{} TRAIN: R2={:.3f}    | TEST: R2={:.3f}'.format(name, trainr2, testr2))
-        print('{} TRAIN: MSE={:.5f} | TEST: MSE={:.5f}'.format(name, trainmse, testmse))   
-        print('{} TRAIN: MAE={:.5f} | TEST: MAE={:.5f}'.format(name, trainmae, testmae))
+class h2proxy:
+    def __init__(self):
+        clear_session()
+        self.verbose     = True
+        self.returns     = True
+        self.xcols       = range(12)
+        self.ycols       = [12, 14, 15]
+        self.noise       = np.random.normal(0, 0.05, (40000,17))
+        self.gwrt_cutoff = 1e5
+        self.std_outlier = 3
+        self.test_size   = 0.3
+        self.reg         = L1L2(1e-5)
+        self.slope       = 0.33
+        self.drop        = 0.1
+        self.optim       = Nadam(1e-3)
+        self.loss        = 'mae'
+        self.metrics     = ['mae','mse']
+        self.epochs      = 100
+        self.batch_size  = 150
+        self.valid_split = 0.2
+        self.NN_verbose  = False
+        self.save_data   = True
         
-def plot_results(train, trainpred, test, testpred, figsize=(15,4), figname='figure'):
-    plt.figure(figsize=figsize)
-    plt.suptitle(figname)
-    for i in range(3):
-        name = train.columns[i]
-        plt.subplot(1,3,i+1)
-        plt.axline([0,0],[1,1], c='r', linewidth=3)
-        plt.scatter(train.iloc[:,i], trainpred.iloc[:,i], alpha=0.5, label='train')
-        plt.scatter(test.iloc[:,i],  testpred.iloc[:,i],  alpha=0.3, label='test')
-        plt.xlabel('True'); plt.ylabel('Predicted'); plt.legend()
-        plt.title('{}'.format(name))
-    plt.savefig(figname + '.png')
-    plt.show()
+    #################### PROCESSING ####################
+    def read_data(self, subsample=None):
+        data_ch4  = pd.read_csv('data_CH4.csv',  index_col=0)
+        data_co2  = pd.read_csv('data_CO2.csv',  index_col=0)
+        data_n2   = pd.read_csv('data_N2.csv',   index_col=0)
+        data_nocg = pd.read_csv('data_nocg.csv', index_col=0) 
+        data_all  = pd.concat([data_ch4, data_co2, data_n2, data_nocg])
+        if subsample:
+            self.all_data = data_all.iloc[subsample[0]:subsample[1], :]
+        else:
+            self.all_data = data_all
+        if self.verbose:
+            print('CH4: {} | CO2: {} | N2: {}'.format(data_ch4.shape, data_co2.shape, data_n2.shape))
+            print('All: {}'.format(self.all_data.shape))
+        if self.returns:
+            return self.all_data
+
+    def process_data(self, noise=True):
+        if noise:
+            data = self.all_data + self.noise
+        else:
+            data = self.all_data
+        data_trunc = data[data['gwrt']<self.gwrt_cutoff]
+        data_clean = data_trunc[(np.abs(zscore(data_trunc))<self.std_outlier)]
+        X_data, y_data = data_clean.iloc[:, self.xcols], data_clean.iloc[:, self.ycols]
+        y_data_log = y_data.copy()
+        y_data_log['gwrt'] = np.log10(y_data['gwrt'])
+        self.x_scaler, self.y_scaler = MinMaxScaler(), MinMaxScaler()
+        self.x_scaler.fit(X_data);   self.y_scaler.fit(y_data_log)
+        X_norm = pd.DataFrame(self.x_scaler.transform(X_data), columns=X_data.columns)
+        y_norm = pd.DataFrame(self.y_scaler.transform(y_data_log), columns=y_data.columns)
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X_norm, y_norm, test_size=self.test_size )
+        if self.verbose:
+            print('Full dataset shape:', self.all_data.shape)
+            print('Truncated dataset shape:', data_trunc.shape)
+            print('Clean (no outliers) dataset shape:', data_clean.shape)
+            print('Train: X={} | y={}'.format(self.X_train.shape, self.y_train.shape))
+            print('Test:  X={} | y={}'.format(self.X_test.shape,  self.y_test.shape)) 
+        if self.returns:
+            return self.X_train, self.X_test, self.y_train, self.y_test, self.x_scaler, self.y_scaler
     
-#############################################################################################################################
-######################################################## PROCESSING #########################################################
-#############################################################################################################################
-
-def process_data(data, xcols=range(1,13), ycols=[13,15,16]):
-    print('Full dataset shape:', data.shape)
-    data_trunc = data[data['gwrt']<1e5]
-    print('Truncated dataset shape:', data_trunc.shape)
-    data_clean = data_trunc[(np.abs(stats.zscore(data_trunc))<3)]
-    print('Clean (no outliers) dataset shape:', data_clean.shape)
-    X_data = data_clean.iloc[:, xcols]
-    y_data = data_clean.iloc[:, ycols]
-    y_data_log = y_data.copy()
-    y_data_log['gwrt'] = np.log10(y_data['gwrt'])
-    x_scaler, y_scaler = MinMaxScaler(), MinMaxScaler()
-    x_scaler.fit(X_data)
-    y_scaler.fit(y_data_log)
-    X_norm = pd.DataFrame(x_scaler.transform(X_data), columns=X_data.columns)
-    y_norm = pd.DataFrame(y_scaler.transform(y_data_log), columns=y_data.columns)
-    X_train, X_test, y_train, y_test = train_test_split(X_norm, y_norm, test_size=0.3)
-    print('\n')
-    print('Train: X={} | y={}'.format(X_train.shape, y_train.shape))
-    print('Test:  X={} | y={}'.format(X_test.shape,  y_test.shape))
+    #################### ROM ####################
+    def dense_block(self, inp0, neurons):
+            _ = Dense(neurons, activity_regularizer=self.reg)(inp0)
+            _ = LeakyReLU(self.slope)(_)
+            _ = Dropout(self.drop)(_)
+            _ = BatchNormalization()(_)
+            return _
     
-    return X_train, X_test, y_train, y_test, x_scaler, y_scaler
+    def make_model(self):
+        inp = Input(shape=(self.X_train.shape[-1]))
+        _ = self.dense_block(inp, 48)
+        _ = self.dense_block(_, 96)
+        _ = self.dense_block(_, 128)
+        _ = self.dense_block(_, 96)
+        _ = self.dense_block(_, 48)
+        _ = self.dense_block(_, 12)
+        out = Dense(self.y_train.shape[-1])(_)
+        self.model = Model(inp, out, name='H2_ROM')   
+        self.model.compile(optimizer=self.optim, loss=self.loss, metrics=self.metrics)
+        self.fit = self.model.fit(self.X_train, self.y_train,
+                                    epochs           = self.epochs,
+                                    batch_size       = self.batch_size,
+                                    validation_split = self.valid_split,
+                                    verbose          = self.NN_verbose)
+        if self.returns:
+            return self.model, self.fit
+    
+    def make_predictions(self):
+        self.y_train_pred = pd.DataFrame(self.model.predict(self.X_train), columns=self.y_train.columns)
+        self.y_test_pred  = pd.DataFrame(self.model.predict(self.X_test),  columns=self.y_test.columns)
+        if self.returns:
+            return self.y_train_pred, self.y_test_pred
+    
+    #################### PLOTS & PRINTS ####################
+    def rescale_results(self):
+        def inv_scale(data):
+            return pd.DataFrame(self.y_scaler.inverse_transform(data), columns=data.columns)
+        self.y_train_r,      self.y_test_r      = inv_scale(self.y_train),      inv_scale(self.y_test)
+        self.y_train_pred_r, self.y_test_pred_r = inv_scale(self.y_train_pred), inv_scale(self.y_test_pred)
+        self.y_train_r['gwrt'], self.y_train_pred_r['gwrt'] = 10**self.y_train_r['gwrt'], 10**self.y_train_pred_r['gwrt']
+        self.y_test_r['gwrt'],  self.y_test_pred_r['gwrt']  = 10**self.y_test_r['gwrt'],  10**self.y_test_pred_r['gwrt']
+        if self.returns:
+            return self.y_train_r, self.y_test_r, self.y_train_pred_r, self.y_test_pred_r
+    
+    def print_metrics(self):
+        tot_train_r2,  tot_test_r2  = r2_score(self.y_train, self.y_train_pred),            r2_score(self.y_test, self.y_test_pred)
+        tot_train_mse, tot_test_mse = mean_squared_error(self.y_train, self.y_train_pred),  mean_squared_error(self.y_test, self.y_test_pred)
+        tot_train_mae, tot_test_mae = mean_absolute_error(self.y_train, self.y_train_pred), mean_absolute_error(self.y_test, self.y_test_pred)
+        print('\n')
+        print('TRAIN: R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_train_r2, tot_train_mse, tot_train_mae))
+        print('TEST:  R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_test_r2, tot_test_mse, tot_test_mae))
+        for i in range(3):
+            name = self.y_train.columns[i]
+            trainr2,  testr2  = r2_score(self.y_train[name], self.y_train_pred[name]),            r2_score(self.y_test[name], self.y_test_pred[name])
+            trainmse, testmse = mean_squared_error(self.y_train[name], self.y_train_pred[name]),  mean_squared_error(self.y_test[name], self.y_test_pred[name])
+            trainmae, testmae = mean_absolute_error(self.y_train[name], self.y_train_pred[name]), mean_absolute_error(self.y_test[name], self.y_test_pred[name])
+            print('\n')
+            print('{} TRAIN: R2={:.3f}    | TEST: R2={:.3f}'.format(name, trainr2, testr2))
+            print('{} TRAIN: MSE={:.5f} | TEST: MSE={:.5f}'.format(name, trainmse, testmse))   
+            print('{} TRAIN: MAE={:.5f} | TEST: MAE={:.5f}'.format(name, trainmae, testmae))
+        if self.save_data:
+            metrics = np.array([tot_train_r2, tot_test_r2, tot_train_mse, tot_test_mse, tot_train_mae, tot_test_mae])
+            np.save('metrics.npy', metrics)
+            
+    def plot_loss(self, title='', figsize=None):
+        if figsize:
+            plt.figure(figsize=figsize)
+        loss, val = self.fit.history['loss'], self.fit.history['val_loss']
+        epochs = len(loss)
+        iterations = np.arange(epochs)
+        plt.plot(iterations, loss, '-', label='loss')
+        plt.plot(iterations, val,  '-', label='validation loss')
+        plt.title(title+' Training Loss vs epochs'); plt.legend()
+        plt.xlabel('Epochs'); plt.ylabel('Loss'); plt.xticks(iterations[::epochs//10])
+        plt.savefig('training_performance.png')
+        plt.show()
+       
+    def plot_results(self, figsize=(15,4), figname='Results'):
+        plt.figure(figsize=figsize)
+        plt.suptitle(figname)
+        for i in range(3):
+            name = self.y_train.columns[i]
+            plt.subplot(1,3,i+1)
+            plt.axline([0,0],[1,1], c='r', linewidth=3)
+            plt.scatter(self.y_train.iloc[:,i], self.y_train_pred.iloc[:,i], alpha=0.5, label='train')
+            plt.scatter(self.y_test.iloc[:,i],  self.y_test_pred.iloc[:,i],  alpha=0.5, label='test')
+            plt.xlabel('True'); plt.ylabel('Predicted'); plt.title('{}'.format(name)); plt.legend()
+        plt.savefig(figname + '.png')
+        plt.show()
+        
+    def save_data(self):
+        if self.save_data:            
+            self.X_train.to_csv('X_train.csv'); self.X_test.to_csv('X_test.csv')
+            self.y_train.to_csv('y_train.csv'); self.y_test.to_csv('y_test.csv')
+            self.y_train_pred.to_csv('y_train_pred.csv'); self.y_test_pred.to_csv('y_test_pred.csv')          
+            self.model.save('h2proxy_model', overwrite=True, save_format='h5')
+            print('\nData is Saved! ..... DONE!')
+        else:
+            print('\n...DONE!')
 
-def rescale_results(train, trainpred, test, testpred, yscaler):
-    train_r = pd.DataFrame(yscaler.inverse_transform(train), columns=train.columns)
-    test_r  = pd.DataFrame(yscaler.inverse_transform(test),  columns=test.columns)
-    train_pred_r = pd.DataFrame(yscaler.inverse_transform(trainpred), columns=trainpred.columns)
-    test_pred_r  = pd.DataFrame(yscaler.inverse_transform(testpred),  columns=testpred.columns)
-    train_r['gwrt'] = 10**train_r['gwrt']
-    train_pred_r['gwrt'] = 10**train_pred_r['gwrt']
-    test_r['gwrt'] = 10**test_r['gwrt']
-    test_pred_r['gwrt'] = 10**test_pred_r['gwrt']
-    return train_r, train_pred_r, test_r, test_pred_r
-
-#############################################################################################################################
-############################################################ ROM ############################################################
-#############################################################################################################################
-def make_model():
-    clear_session()
-    def dense_block(inp, neurons, slope=0.33, drop=0.10):
-        _ = Dense(neurons, activity_regularizer=L1L2(1e-5))(inp)
-        _ = LeakyReLU(slope)(_)
-        _ = Dropout(drop)(_)
-        _ = BatchNormalization()(_)
-        return _
-    inp = Input(shape=(10))
-    _ = dense_block(inp, 50)
-    _ = dense_block(_, 100)
-    _ = dense_block(_, 150)
-    _ = dense_block(_, 50)
-    _ = dense_block(_, 10)
-    out = Dense(3, activation='linear')(_)
-    return Model(inp, out)
-
-def train_model(model, xtrain, ytrain, 
-                optimizer=Nadam(1e-3), loss='mae', metrics=['mse','mae'], 
-                epochs=100, batch_size=100, validation_split=0.2, verbose=0):
-    model.compile(optimizer = optimizer,
-                  loss      = loss,
-                  metrics   =  metrics)
-    fit = model.fit(xtrain, ytrain,
-                    epochs           = epochs,
-                    batch_size       = batch_size,
-                    validation_split = validation_split,
-                    verbose          = verbose)
-    return model, fit
-
-def make_predictions(model, xtrain, xtest, ytrain, ytest):
-    ytrain_pred = pd.DataFrame(model.predict(xtrain), columns=ytrain.columns)
-    ytest_pred  = pd.DataFrame(model.predict(xtest),  columns=ytest.columns)
-    return ytrain_pred, ytest_pred
-
-#############################################################################################################################
-############################################################ RUN ############################################################
-#############################################################################################################################
-
-
-############################################################ END ############################################################
+########################################################################################################################
+############################################################ END #######################################################
+########################################################################################################################
