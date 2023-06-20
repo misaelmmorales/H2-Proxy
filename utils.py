@@ -115,6 +115,7 @@ class h2proxy:
                                     epochs           = self.epochs,
                                     batch_size       = self.batch_size,
                                     validation_split = self.valid_split,
+				                    shuffle          = True,
                                     verbose          = self.NN_verbose)
         if self.returns:
             return self.model, self.fit

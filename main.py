@@ -11,7 +11,7 @@ h2.process_data()
 
 ########################       ROM      ########################
 h2.make_model()
-if h2.NN_verbose = True
+if h2.NN_verbose == True:
     h2.model.summary()
 h2.plot_loss()
 
