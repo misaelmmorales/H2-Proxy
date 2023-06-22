@@ -9,17 +9,18 @@ clear_session()
 check_tensorflow_gpu()
 
 h2 = h2proxy()
+h2.return_data = True
 
 ########################## PROCESSING ##########################
-h2.read_data(n_subsample=5000)
-h2.process_data()
+all_data = h2.read_data(n_subsample=5000)
+X_train, X_test, y_train, y_test, x_scaler, y_scaler = h2.process_data(restype='SA')
 
 ############################## ROM #############################
-h2.make_model()
+model, fit = h2.make_model()
 if h2.NN_verbose==True:
     h2.model.summary()
-h2.plot_loss()
-h2.make_predictions()
+h2.plot_loss(figsize=(4,3))
+y_train_pred, y_test_pred = h2.make_predictions()
 
 ######################## PLOTS & PRINTS ########################
 h2.print_metrics()

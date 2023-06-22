@@ -1,24 +1,25 @@
 ########################################################################################################################
 ###################################################### IMPORT PACKAGES #################################################
 ########################################################################################################################
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
 from time import time
+from keras.backend import clear_session
 
 from scipy.stats import zscore
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-import keras
-from keras.backend import clear_session
 import tensorflow as tf
 from keras import Model
 from keras.layers import Input, Dense, Dropout, BatchNormalization, LeakyReLU
-from keras.optimizers import Nadam
+from keras.optimizers import Nadam, Adam
 from keras.regularizers import L1, L2, L1L2
+from tensorflow_addons.activations import rrelu, gelu
+from tensorflow.keras.losses import Huber, LogCosh, MeanSquaredLogarithmicError
 
 def check_tensorflow_gpu():
     sys_info = tf.sysconfig.get_build_info()
@@ -32,7 +33,7 @@ def check_tensorflow_gpu():
 
 class h2proxy:
     def __init__(self):
-        self.returns     = False
+        self.return_data = False
         self.verbose     = True
         self.NN_verbose  = False
         self.xcols       = range(12)
@@ -42,14 +43,14 @@ class h2proxy:
         self.gwrt_cutoff = 1e5
         self.std_outlier = 3
         self.test_size   = 0.3
-        self.reg         = L1L2(1e-5)
-        self.slope       = 0.33
+        self.reg         = L1(1e-5)
+        self.slope       = 0.3
         self.drop        = 0.1
-        self.optim       = Nadam(1e-3)
-        self.loss        = 'mae'
+        self.optim       = Adam(1e-3)
+        self.loss        = LogCosh()
         self.metrics     = ['mae','mse']
-        self.epochs      = 100
-        self.batch_size  = 150
+        self.epochs      = 200
+        self.batch_size  = 100
         self.valid_split = 0.2
         self.save_result = True
         
@@ -68,17 +69,21 @@ class h2proxy:
         if self.verbose:
             print('CH4: {} | CO2: {} | N2: {}'.format(data_ch4.shape, data_co2.shape, data_n2.shape))
             print('All: {}'.format(self.all_data.shape))
-        if self.returns:
+        if self.return_data:
             return self.all_data
 
-    def process_data(self):
+    def process_data(self, restype='SA or DGR'):
         if self.noise_flag:
-            data = self.all_data + np.random.normal(self.noise[0], self.noise[1], 
-                                                    (self.all_data.shape[0], self.all_data.shape[1]))
+            data = self.all_data + np.random.normal(self.noise[0], self.noise[1], (self.all_data.shape))
         else:
             data = self.all_data
         data_trunc = data[data['gwrt']<self.gwrt_cutoff]
-        data_clean = data_trunc[(np.abs(zscore(data_trunc))<self.std_outlier)]
+        data_outl = data_trunc[(np.abs(zscore(data_trunc))<self.std_outlier)]
+        if restype=='SA':
+            data_outl['Sw'] = 1
+        elif restype=='DGR':
+            data_outl['Sw'] = self.all_data['Sw']
+        data_clean = data_outl.dropna()            
         X_data, y_data = data_clean.iloc[:, self.xcols], data_clean.iloc[:, self.ycols]
         y_data_log = y_data.copy()
         y_data_log['gwrt'] = np.log10(y_data['gwrt'])
@@ -93,58 +98,58 @@ class h2proxy:
             print('Clean (no outliers) dataset shape:', data_clean.shape)
             print('Train: X={} | y={}'.format(self.X_train.shape, self.y_train.shape))
             print('Test:  X={} | y={}'.format(self.X_test.shape,  self.y_test.shape)) 
-        if self.returns:
+        if self.return_data:
             return self.X_train, self.X_test, self.y_train, self.y_test, self.x_scaler, self.y_scaler
     
     #################### ROM ####################   
     def make_model(self):
         inp = Input(shape=(self.X_train.shape[-1]))
-        _ = Dense(48, activity_regularizer=self.reg)(inp)
+        _ = Dense(64, activity_regularizer=self.reg)(inp)
         _ = LeakyReLU(self.slope)(_)
         _ = Dropout(self.drop)(_)
         _ = BatchNormalization()(_)
-        
-        _ = Dense(96, activity_regularizer=self.reg)(_)
-        _ = LeakyReLU(self.slope)(_)
-        _ = Dropout(self.drop)(_)
-        _ = BatchNormalization()(_)
-        
+              
         _ = Dense(128, activity_regularizer=self.reg)(_)
         _ = LeakyReLU(self.slope)(_)
         _ = Dropout(self.drop)(_)
         _ = BatchNormalization()(_)
         
-        _ = Dense(96, activity_regularizer=self.reg)(_)
+        _ = Dense(64, activity_regularizer=self.reg)(_)
         _ = LeakyReLU(self.slope)(_)
         _ = Dropout(self.drop)(_)
         _ = BatchNormalization()(_)
         
-        _ = Dense(48, activity_regularizer=self.reg)(_)
+        _ = Dense(32, activity_regularizer=self.reg)(_)
         _ = LeakyReLU(self.slope)(_)
         _ = Dropout(self.drop)(_)
         _ = BatchNormalization()(_)
-        
-        _ = Dense(12, activity_regularizer=self.reg)(_)
+
+        _ = Dense(16, activity_regularizer=self.reg)(_)
         _ = LeakyReLU(self.slope)(_)
         _ = Dropout(self.drop)(_)
         _ = BatchNormalization()(_)
         
         out = Dense(self.y_train.shape[-1])(_)
-        self.model = Model(inp, out, name='H2_ROM')   
+        self.model = Model(inp, out, name='H2_ROM')          
         self.model.compile(optimizer=self.optim, loss=self.loss, metrics=self.metrics)
+        nparams = self.model.count_params()
+        start = time()
         self.fit = self.model.fit(self.X_train, self.y_train,
                                     epochs           = self.epochs,
                                     batch_size       = self.batch_size,
                                     validation_split = self.valid_split,
 				                    shuffle          = True,
                                     verbose          = self.NN_verbose)
-        if self.returns:
+        traintime = (time() - start)/60
+        if self.verbose:
+            print('# Parameters: {:,} | Training Time: {:.2f} minutes'.format(nparams, traintime))
+        if self.return_data:
             return self.model, self.fit
     
     def make_predictions(self):
         self.y_train_pred = pd.DataFrame(self.model.predict(self.X_train), columns=self.y_train.columns)
         self.y_test_pred  = pd.DataFrame(self.model.predict(self.X_test),  columns=self.y_test.columns)
-        if self.returns:
+        if self.return_data:
             return self.y_train_pred, self.y_test_pred
     
     #################### PLOTS & PRINTS ####################
@@ -155,14 +160,13 @@ class h2proxy:
         self.y_train_pred_r, self.y_test_pred_r = inv_scale(self.y_train_pred), inv_scale(self.y_test_pred)
         self.y_train_r['gwrt'], self.y_train_pred_r['gwrt'] = 10**self.y_train_r['gwrt'], 10**self.y_train_pred_r['gwrt']
         self.y_test_r['gwrt'],  self.y_test_pred_r['gwrt']  = 10**self.y_test_r['gwrt'],  10**self.y_test_pred_r['gwrt']
-        if self.returns:
+        if self.return_data:
             return self.y_train_r, self.y_test_r, self.y_train_pred_r, self.y_test_pred_r
     
     def print_metrics(self):
         tot_train_r2,  tot_test_r2  = r2_score(self.y_train, self.y_train_pred),            r2_score(self.y_test, self.y_test_pred)
         tot_train_mse, tot_test_mse = mean_squared_error(self.y_train, self.y_train_pred),  mean_squared_error(self.y_test, self.y_test_pred)
         tot_train_mae, tot_test_mae = mean_absolute_error(self.y_train, self.y_train_pred), mean_absolute_error(self.y_test, self.y_test_pred)
-        print('\n')
         print('TRAIN: R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_train_r2, tot_train_mse, tot_train_mae))
         print('TEST:  R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_test_r2, tot_test_mse, tot_test_mae))
         for i in range(3):
