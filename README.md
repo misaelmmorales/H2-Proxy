@@ -15,3 +15,4 @@ Go into Anaconda Navigator and edit condarc settings to include http and https p
 - conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0
 - pip install --proxy http://proxyout.lanl.gov:8080 tensorflow
 
+https://machinelearningmastery.com/develop-your-first-neural-network-with-pytorch-step-by-step/
