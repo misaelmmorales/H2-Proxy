@@ -4,6 +4,8 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
+from time import time
 
 from scipy.stats import zscore
 from sklearn.model_selection import train_test_split
@@ -49,7 +51,7 @@ class h2proxy:
         self.epochs      = 100
         self.batch_size  = 150
         self.valid_split = 0.2
-        self.save_results   = True
+        self.save_result = True
         
     #################### PROCESSING ####################
     def read_data(self, n_subsample=None):
@@ -203,7 +205,7 @@ class h2proxy:
         plt.show()
         
     def save_data(self):
-        if self.save_results:
+        if self.save_result:
             self.X_train.to_csv('X_train.csv'); self.X_test.to_csv('X_test.csv')
             self.y_train.to_csv('y_train.csv'); self.y_test.to_csv('y_test.csv')
             self.y_train_pred.to_csv('y_train_pred.csv'); self.y_test_pred.to_csv('y_test_pred.csv')          
