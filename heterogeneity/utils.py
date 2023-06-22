@@ -35,7 +35,7 @@ class H2_heterogeneity:
         self.scaler_range = [0.75,1.25]
         self.standard_dim = (9,256,256)
         self.return_data  = False
-        self.save_data    = False
+        self.save_data    = True
         
     def create_data(self):
         fname, self.fluv_name, facies_raw, facies_norm = {}, {}, {}, {}
@@ -68,12 +68,12 @@ class H2_heterogeneity:
     def process_perm_poro(self, lognormnoise=[-5,.1]):
         # Fluvial fields
         temp_fluv = self.fluvial_perm_raw.reshape(len(self.selector), self.dim*self.dim).T
-        temp_fluv_norm = MinMaxScaler((0,2.9)).fit_transform(temp_fluv).T.reshape(self.standard_dim)
+        temp_fluv_norm = MinMaxScaler((0,2.7)).fit_transform(temp_fluv).T.reshape(self.standard_dim)
         self.perm_fluv = temp_fluv_norm * self.facies
         self.poro_fluv = 10**((self.perm_fluv-7)/10)
         # Gaussian fields
         temp_gaus = self.gaussian_perm_raw.reshape(len(self.selector), self.dim*self.dim).T
-        temp_gaus_norm = MinMaxScaler((0,3.4)).fit_transform(temp_gaus).T.reshape(self.standard_dim)
+        temp_gaus_norm = MinMaxScaler((0,3.2)).fit_transform(temp_gaus).T.reshape(self.standard_dim)
         self.perm_gaus = temp_gaus_norm + np.random.lognormal(lognormnoise[0], lognormnoise[1], (self.standard_dim))
         self.poro_gaus = 10**((self.perm_gaus-7)/10)
         # concatenate into a single array

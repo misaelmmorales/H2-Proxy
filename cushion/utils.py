@@ -67,7 +67,7 @@ class h2proxy:
         else:
             self.all_data = data_all
         if self.verbose:
-            print('CH4: {} | CO2: {} | N2: {}'.format(data_ch4.shape, data_co2.shape, data_n2.shape))
+            print('CH4: {} | CO2: {} | N2: {} | NOCG: {}'.format(data_ch4.shape, data_co2.shape, data_n2.shape, data_nocg.shape))
             print('All: {}'.format(self.all_data.shape))
         if self.return_data:
             return self.all_data
