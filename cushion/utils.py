@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from time import time
+from tqdm import tqdm
 
 from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler
@@ -14,27 +15,69 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 import torch
 import torch.nn as nn
+from torch.nn import Linear, ReLU, LeakyReLU, Dropout1d, BatchNorm1d
 import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data.dataset import random_split
+import torch.nn.functional as F
 from torchviz import make_dot
 
-def check_torch_gpu():
-    print('Torch build with CUDA?', torch.cuda.is_available())
-    return None
-
+class h2_cushion_rom(nn.Module):
+    def __init__(self, in_features, out_features, hidden_sizes=[100]):
+        self.slope = 0.33
+        self.drop  = 0.1
+        super(h2_cushion_rom, self).__init__()
+        assert len(hidden_sizes) >= 1 , 'specify at least one hidden layer'
+        layers = nn.ModuleList()
+        layer_sizes = [in_features] + hidden_sizes
+        for dim_in, dim_out in zip(layer_sizes[:-1], layer_sizes[1:]):
+            layers.append(nn.Linear(dim_in, dim_out))
+            layers.append(nn.LeakyReLU(self.slope))
+            layers.append(Dropout1d(self.drop))
+            layers.append(BatchNorm1d(dim_out))
+        self.layers = nn.Sequential(*layers)      
+        self.out_layer = Linear(hidden_sizes[-1], out_features)
+    def forward(self, x):
+        out = x.view(x.shape[0], -1)
+        out = self.layers(out)
+        out = self.out_layer(out)
+        return out
+    
+class customLoss(nn.Module):
+    def __init__(self):
+        super(customLoss, self).__init__()
+        self.l2_weight = 0.5
+    def forward(self, pred, true):
+        l1_loss = nn.MSELoss()(pred, true)
+        l2_loss = nn.L1Loss()(pred, true)
+        total_loss = (1-self.l2_weight)*l1_loss + self.l2_weight*l2_loss
+        return total_loss
+    
 class H2Toolkit:
     def __init__(self):
         self.return_data = True
         self.verbose     = True
         self.save_result = True
-        
+
         self.xcols       = range(12)
         self.ycols       = [12, 14, 15]
         self.noise_flag  = False
         self.noise       = [0, 0.05]
         self.gwrt_cutoff = 1e5
         self.std_outlier = 3
-        self.test_size   = 0.3
-        
+
+        self.valid_size  = 0.15
+        self.test_size   = 0.20
+
+    def check_torch_gpu(self):
+        version, cuda_avail = torch.__version__, torch.cuda.is_available()
+        count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
+        print('Torch version: {}'.format(version))
+        print('Torch build with CUDA? {}'.format(cuda_avail))
+        print('# Device(s) available: {}, Name(s): {}'.format(count, name))
+        self.device = torch.device('cuda' if cuda_avail else 'cpu')
+        return None
+
     #################### PROCESSING ####################
     def read_data(self, n_subsample=None):
         data_ch4  = pd.read_csv('data_CH4.csv',  index_col=0)
@@ -58,34 +101,104 @@ class H2Toolkit:
             data = self.all_data + np.random.normal(self.noise[0], self.noise[1], (self.all_data.shape))
         else:
             data = self.all_data
-        data_trunc = data[data['gwrt']<self.gwrt_cutoff]
+        data_shuffle = data.sample(frac=1)
+        data_trunc = data_shuffle[data_shuffle['gwrt']<self.gwrt_cutoff]
         data_outl = data_trunc[(np.abs(zscore(data_trunc))<self.std_outlier)]
         if restype=='SA':
             data_outl['Sw'] = 1
         elif restype=='DGR':
             data_outl['Sw'] = self.all_data['Sw']
-        data_clean = data_outl.dropna()            
+        data_clean = data_outl.dropna()  
         X_data, y_data = data_clean.iloc[:, self.xcols], data_clean.iloc[:, self.ycols]
         y_data_log = y_data.copy()
         y_data_log['gwrt'] = np.log10(y_data['gwrt'])
         self.x_scaler, self.y_scaler = MinMaxScaler(), MinMaxScaler()
         self.x_scaler.fit(X_data);   self.y_scaler.fit(y_data_log)
-        X_norm = pd.DataFrame(self.x_scaler.transform(X_data), columns=X_data.columns)
-        y_norm = pd.DataFrame(self.y_scaler.transform(y_data_log), columns=y_data.columns)
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X_norm, y_norm, test_size=self.test_size )
+        self.X_dataset = self.x_scaler.transform(X_data)
+        self.y_dataset = self.y_scaler.transform(y_data_log)
         if self.verbose:
             print('Full dataset shape:', self.all_data.shape)
             print('Truncated dataset shape:', data_trunc.shape)
             print('Clean (no outliers) dataset shape:', data_clean.shape)
-            print('Train: X={} | y={}'.format(self.X_train.shape, self.y_train.shape))
-            print('Test:  X={} | y={}'.format(self.X_test.shape,  self.y_test.shape)) 
+            print('Dataset: X={} | y={}'.format(self.X_dataset.shape, self.y_dataset.shape))
         if self.return_data:
-            return self.X_train, self.X_test, self.y_train, self.y_test, self.x_scaler, self.y_scaler
+            return self.X_dataset, self.y_dataset, self.x_scaler, self.y_scaler
+        
+    def train_valid_test_split(self):
+        ntrain = int(np.floor(self.X_dataset.shape[0]*(1-self.test_size)))
+        nvalid = ntrain - int(np.floor(ntrain * self.valid_size))
+        self.X_train, self.y_train = self.X_dataset[:nvalid],       self.y_dataset[:nvalid]
+        self.X_valid, self.y_valid = self.X_dataset[nvalid:ntrain], self.y_dataset[nvalid:ntrain]
+        self.X_test,  self.y_test  = self.X_dataset[ntrain:],       self.y_dataset[ntrain:]
+        if self.verbose:
+            print('X: train: {} | validation: {} | test: {}'.format(self.X_train.shape, self.X_valid.shape, self.X_test.shape))
+            print('y: train: {}  | validation: {}  | test: {}'.format(self.y_train.shape, self.y_valid.shape, self.y_test.shape))
+        if self.return_data:
+            return self.X_train, self.X_valid, self.X_test, self.y_train, self.y_valid, self.y_test
     
-    #################### ROM ####################   
-    def make_model(self):
-        return
+    def arrays_to_tensors(self):
+        self.X_train_tensor = torch.tensor(self.X_train).float().to(self.device)
+        self.y_train_tensor = torch.tensor(self.y_train).float().to(self.device)
+        self.X_valid_tensor = torch.tensor(self.X_valid).float().to(self.device)
+        self.y_valid_tensor = torch.tensor(self.y_valid).float().to(self.device)
+        self.X_test_tensor = torch.tensor(self.X_test).float().to(self.device)
+        self.y_test_tensor = torch.tensor(self.y_test).float().to(self.device)
+        if self.return_data:
+            return self.X_train_tensor, self.X_valid_tensor, self.X_test_tensor, self.y_train_tensor, self.y_valid_tensor, self.y_test_tensor
     
+    def make_dataloader(self, train_shuffle=True, train_batch=40, valid_shuffle=False, valid_batch=10):
+        self.train_dataset = TensorDataset(self.X_train_tensor, self.y_train_tensor)
+        self.valid_dataset = TensorDataset(self.X_valid_tensor, self.y_valid_tensor)
+        self.train_loader  = DataLoader(self.train_dataset, shuffle=train_shuffle, batch_size=train_batch)
+        self.valid_loader  = DataLoader(self.valid_dataset, shuffle=valid_shuffle, batch_sampler=valid_batch)
+        if self.return_data:
+            return self.train_dataset, self.train_loader, self.valid_dataset, self.valid_loader
+        
+    #################### ROM #################### 
+    def train_one_epoch(self, model, loss_func, optimizer):
+        model.train()
+        criterion = loss_func
+        loss_step = []
+        for (xbatch, ybatch) in self.train_loader:
+            yhat = model(xbatch)
+            loss = criterion(yhat, ybatch)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            with torch.no_grad():
+                loss_step.append(loss.item())
+            train_loss_epoch = torch.tensor(loss_step).mean().numpy()
+            return train_loss_epoch
+    
+    def validate(self, model, loss_func):
+        model.eval()
+        criterion = loss_func
+        loss_step = []
+        with torch.no_grad():
+            for xbatch, ybatch in self.valid_loader:
+                yhat = model(xbatch)
+                val_loss = criterion(yhat, ybatch)
+                loss_step.append(val_loss.item())
+            val_loss_epoch = torch.tensor(loss_step).mean().numpy()
+            return val_loss_epoch
+        
+    def train(self, model, loss_func, optimizer, epochs):
+        model = model.to(self.device)
+        dict_log = {'loss':[], 'valid_loss':[]}
+        pbar = tqdm(range(epochs))
+        for epoch in pbar:
+            e = epoch/epochs
+            loss_epoch = self.train_one_epoch(model, loss_func, optimizer)
+            val_loss_epoch = self.validate(model, loss_func)
+            msg = 'Epoch: {} -- Loss: {:.5f}, Validation Loss: {:.5f}'.format(e, loss_epoch, val_loss_epoch)
+            pbar.set_description(msg)
+            dict_log['loss'].append(loss_epoch)
+            dict_log['valid_loss'].append(val_loss_epoch)
+        if self.return_data:
+            return dict_log
+
+
+
     def make_predictions(self):
         self.y_train_pred = None
         self.y_test_pred  = None
