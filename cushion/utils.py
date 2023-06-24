@@ -15,7 +15,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 import torch
 import torch.nn as nn
-from torch.nn import Linear, ReLU, LeakyReLU, Dropout1d, BatchNorm1d
+from torch.nn import Linear, ReLU, LeakyReLU, Dropout1d, Dropout, BatchNorm1d
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 from torch.utils.data.dataset import random_split
@@ -23,19 +23,21 @@ import torch.nn.functional as F
 from torchviz import make_dot
 
 class h2_cushion_rom(nn.Module):
-    def __init__(self, in_features, out_features, hidden_sizes=[100]):
-        self.slope = 0.33
-        self.drop  = 0.1
+    def __init__(self, in_features, out_features, hidden_sizes=[100,60,10], 
+                 act=nn.LeakyReLU(0.33), drop=nn.Dropout(0.1), batchnorm_flag=True):
         super(h2_cushion_rom, self).__init__()
         assert len(hidden_sizes) >= 1 , 'specify at least one hidden layer'
         layers = nn.ModuleList()
         layer_sizes = [in_features] + hidden_sizes
         for dim_in, dim_out in zip(layer_sizes[:-1], layer_sizes[1:]):
             layers.append(nn.Linear(dim_in, dim_out))
-            layers.append(nn.LeakyReLU(self.slope))
-            layers.append(Dropout1d(self.drop))
-            layers.append(BatchNorm1d(dim_out))
-        self.layers = nn.Sequential(*layers)      
+            if act != None:
+                layers.append(act)
+            if drop != None:
+                layers.append(drop)
+            if batchnorm_flag:
+                layers.append(BatchNorm1d(dim_out))
+        self.layers = nn.Sequential(*layers)
         self.out_layer = Linear(hidden_sizes[-1], out_features)
     def forward(self, x):
         out = x.view(x.shape[0], -1)
@@ -43,9 +45,9 @@ class h2_cushion_rom(nn.Module):
         out = self.out_layer(out)
         return out
     
-class customLoss(nn.Module):
+class L1L2_Loss(nn.Module):
     def __init__(self):
-        super(customLoss, self).__init__()
+        super(L1L2_Loss, self).__init__()
         self.l2_weight = 0.5
     def forward(self, pred, true):
         l1_loss = nn.MSELoss()(pred, true)
@@ -55,19 +57,21 @@ class customLoss(nn.Module):
     
 class H2Toolkit:
     def __init__(self):
-        self.return_data = True
+        self.return_data = False
         self.verbose     = True
         self.save_result = True
-
+        self.inp         = 12
+        self.out         = 3
         self.xcols       = range(12)
         self.ycols       = [12, 14, 15]
         self.noise_flag  = False
         self.noise       = [0, 0.05]
         self.gwrt_cutoff = 1e5
         self.std_outlier = 3
-
         self.valid_size  = 0.15
         self.test_size   = 0.20
+        self.epochs      = 250
+        self.target_labels = ['efft','ymft','gwrt']
 
     def check_torch_gpu(self):
         version, cuda_avail = torch.__version__, torch.cuda.is_available()
@@ -150,7 +154,7 @@ class H2Toolkit:
         self.train_dataset = TensorDataset(self.X_train_tensor, self.y_train_tensor)
         self.valid_dataset = TensorDataset(self.X_valid_tensor, self.y_valid_tensor)
         self.train_loader  = DataLoader(self.train_dataset, shuffle=train_shuffle, batch_size=train_batch)
-        self.valid_loader  = DataLoader(self.valid_dataset, shuffle=valid_shuffle, batch_sampler=valid_batch)
+        self.valid_loader  = DataLoader(self.valid_dataset, shuffle=valid_shuffle, batch_size=valid_batch)
         if self.return_data:
             return self.train_dataset, self.train_loader, self.valid_dataset, self.valid_loader
         
@@ -173,35 +177,36 @@ class H2Toolkit:
     def validate(self, model, loss_func):
         model.eval()
         criterion = loss_func
-        loss_step = []
+        v_loss_step = []
         with torch.no_grad():
             for xbatch, ybatch in self.valid_loader:
                 yhat = model(xbatch)
                 val_loss = criterion(yhat, ybatch)
-                loss_step.append(val_loss.item())
-            val_loss_epoch = torch.tensor(loss_step).mean().numpy()
+                v_loss_step.append(val_loss.item())
+            val_loss_epoch = torch.tensor(v_loss_step).mean().numpy()
             return val_loss_epoch
         
-    def train(self, model, loss_func, optimizer, epochs):
+    def train(self, model, loss_func, optimizer):
         model = model.to(self.device)
-        dict_log = {'loss':[], 'valid_loss':[]}
-        pbar = tqdm(range(epochs))
+        self.dict_log = {'loss':[], 'valid_loss':[]}
+        pbar = tqdm(range(self.epochs))
         for epoch in pbar:
-            e = epoch/epochs
             loss_epoch = self.train_one_epoch(model, loss_func, optimizer)
             val_loss_epoch = self.validate(model, loss_func)
-            msg = 'Epoch: {} -- Loss: {:.5f}, Validation Loss: {:.5f}'.format(e, loss_epoch, val_loss_epoch)
+            msg = 'Epoch: {}/{} -- Loss: {:.5f}, Validation Loss: {:.5f}'.format(epoch+1, self.epochs,
+                                                                              loss_epoch, 
+                                                                              val_loss_epoch)
             pbar.set_description(msg)
-            dict_log['loss'].append(loss_epoch)
-            dict_log['valid_loss'].append(val_loss_epoch)
+            self.dict_log['loss'].append(loss_epoch)
+            self.dict_log['valid_loss'].append(val_loss_epoch)
         if self.return_data:
-            return dict_log
+            return self.dict_log
 
-
-
-    def make_predictions(self):
-        self.y_train_pred = None
-        self.y_test_pred  = None
+    def make_predictions(self, model):
+        self.y_train_pred = np.array(model(self.X_train_tensor).tolist())
+        self.y_test_pred  = np.array(model(self.X_test_tensor).tolist())
+        print('Train Pred shape: {}'.format(self.y_train_pred.shape))
+        print('Test Pred shape:  {}'.format(self.y_test_pred.shape))
         if self.return_data:
             return self.y_train_pred, self.y_test_pred
     
@@ -221,13 +226,13 @@ class H2Toolkit:
         tot_train_mse, tot_test_mse = mean_squared_error(self.y_train, self.y_train_pred),  mean_squared_error(self.y_test, self.y_test_pred)
         tot_train_mae, tot_test_mae = mean_absolute_error(self.y_train, self.y_train_pred), mean_absolute_error(self.y_test, self.y_test_pred)
         print('TRAIN: R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_train_r2, tot_train_mse, tot_train_mae))
-        print('TEST:  R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_test_r2, tot_test_mse, tot_test_mae))
+        print('TEST:  R2={:.3f} | MSE={:.5f} | MAE={:.5f}'.format(tot_test_r2, tot_test_mse, tot_test_mae))     
         for i in range(3):
-            name = self.y_train.columns[i]
-            trainr2,  testr2  = r2_score(self.y_train[name], self.y_train_pred[name]),            r2_score(self.y_test[name], self.y_test_pred[name])
-            trainmse, testmse = mean_squared_error(self.y_train[name], self.y_train_pred[name]),  mean_squared_error(self.y_test[name], self.y_test_pred[name])
-            trainmae, testmae = mean_absolute_error(self.y_train[name], self.y_train_pred[name]), mean_absolute_error(self.y_test[name], self.y_test_pred[name])
-            print('\n')
+            name = self.target_labels[i]
+            trainr2,  testr2  = r2_score(self.y_train[:,i], self.y_train_pred[:,i]),            r2_score(self.y_test[:,i], self.y_test_pred[:,i])
+            trainmse, testmse = mean_squared_error(self.y_train[:,i], self.y_train_pred[:,i]),  mean_squared_error(self.y_test[:,i], self.y_test_pred[:,i])
+            trainmae, testmae = mean_absolute_error(self.y_train[:,i], self.y_train_pred[:,i]), mean_absolute_error(self.y_test[:,i], self.y_test_pred[:,i])
+            print('---------------')
             print('{} TRAIN: R2={:.3f}    | TEST: R2={:.3f}'.format(name, trainr2, testr2))
             print('{} TRAIN: MSE={:.5f} | TEST: MSE={:.5f}'.format(name, trainmse, testmse))   
             print('{} TRAIN: MAE={:.5f} | TEST: MAE={:.5f}'.format(name, trainmae, testmae))
@@ -235,10 +240,10 @@ class H2Toolkit:
             metrics = np.array([tot_train_r2, tot_test_r2, tot_train_mse, tot_test_mse, tot_train_mae, tot_test_mae])
             np.save('metrics.npy', metrics)
             
-    def plot_loss(self, title='', figsize=None):
+    def plot_loss(self, title='', figsize=(4,3)):
         if figsize:
             plt.figure(figsize=figsize)
-        loss, val = self.fit.history['loss'], self.fit.history['val_loss']
+        loss, val = self.dict_log['loss'], self.dict_log['valid_loss']
         epochs = len(loss)
         iterations = np.arange(epochs)
         plt.plot(iterations, loss, '-', label='loss')
@@ -252,21 +257,24 @@ class H2Toolkit:
         plt.figure(figsize=figsize)
         plt.suptitle(figname)
         for i in range(3):
-            name = self.y_train.columns[i]
+            name = self.target_labels[i]
+            r2train = r2_score(self.y_train[:,i], self.y_train_pred[:,i])
+            r2test  = r2_score(self.y_test[:,i],  self.y_test_pred[:,i])
             plt.subplot(1,3,i+1)
             plt.axline([0,0],[1,1], c='r', linewidth=3)
-            plt.scatter(self.y_train.iloc[:,i], self.y_train_pred.iloc[:,i], alpha=0.5, label='train')
-            plt.scatter(self.y_test.iloc[:,i],  self.y_test_pred.iloc[:,i],  alpha=0.5, label='test')
-            plt.xlabel('True'); plt.ylabel('Predicted'); plt.title('{}'.format(name)); plt.legend()
+            plt.scatter(self.y_train[:,i], self.y_train_pred[:,i], alpha=0.5, label='train')
+            plt.scatter(self.y_test[:,i],  self.y_test_pred[:,i],  alpha=0.5, label='test')
+            plt.xlabel('True'); plt.ylabel('Predicted'); plt.legend()
+            plt.title('{} - $R^2_{}$={:.2f} ; $R^2_{}$={:.2f}'.format(name,'{train}',r2train,'{test}',r2test))
         plt.savefig(figname + '.png')
         plt.show()
         
-    def save_data(self):
+    def save_data(self, model):
         if self.save_result:
-            self.X_train.to_csv('X_train.csv'); self.X_test.to_csv('X_test.csv')
-            self.y_train.to_csv('y_train.csv'); self.y_test.to_csv('y_test.csv')
-            self.y_train_pred.to_csv('y_train_pred.csv'); self.y_test_pred.to_csv('y_test_pred.csv')          
-            self.model.save('h2proxy_model', overwrite=True, save_format='h5')
+            np.save('X_train.npy',self.X_train); np.save('X_valid.npy',self.X_valid); np.save('X_test.npy',self.X_test)
+            np.save('y_train.npy',self.y_train); np.save('y_valid.npy',self.y_valid); np.save('y_test.npy',self.y_test)
+            np.save('y_train_pred.npy', self.y_train_pred); np.save('y_test_pred.npy', self.y_test_pred)
+            torch.save(model.state_dict(), 'h2_cushion_rom.pt')
             print('\nData is Saved! ..... DONE!')
         else:
             print('\n...DONE!')
