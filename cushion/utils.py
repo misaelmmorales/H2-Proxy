@@ -84,10 +84,10 @@ class H2Toolkit:
 
     #################### PROCESSING ####################
     def read_data(self, n_subsample=None):
-        data_ch4  = pd.read_csv('data_CH4.csv',  index_col=0)
-        data_co2  = pd.read_csv('data_CO2.csv',  index_col=0)
-        data_n2   = pd.read_csv('data_N2.csv',   index_col=0)
-        data_nocg = pd.read_csv('data_NOCG.csv', index_col=0) 
+        data_ch4  = pd.read_csv('data/data_CH4.csv',  index_col=0)
+        data_co2  = pd.read_csv('data/data_CO2.csv',  index_col=0)
+        data_n2   = pd.read_csv('data/data_N2.csv',   index_col=0)
+        data_nocg = pd.read_csv('data/data_NOCG.csv', index_col=0) 
         data_all  = pd.concat([data_ch4, data_co2, data_n2, data_nocg])
         if n_subsample:
             idx = np.random.randint(0, data_all.shape[0], n_subsample)
@@ -238,7 +238,7 @@ class H2Toolkit:
             print('{} TRAIN: MAE={:.5f} | TEST: MAE={:.5f}'.format(name, trainmae, testmae))
         if self.save_data:
             metrics = np.array([tot_train_r2, tot_test_r2, tot_train_mse, tot_test_mse, tot_train_mae, tot_test_mae])
-            np.save('metrics.npy', metrics)
+            np.save('data/metrics.npy', metrics)
             
     def plot_loss(self, title='', figsize=(4,3)):
         if figsize:
@@ -250,7 +250,7 @@ class H2Toolkit:
         plt.plot(iterations, val,  '-', label='validation loss')
         plt.title(title+' Training Loss vs epochs'); plt.legend()
         plt.xlabel('Epochs'); plt.ylabel('Loss'); plt.xticks(iterations[::epochs//10])
-        plt.savefig('training_performance.png')
+        plt.savefig('figures/training_performance.png')
         plt.show()
        
     def plot_results(self, figsize=(15,4), figname='Results'):
@@ -266,14 +266,16 @@ class H2Toolkit:
             plt.scatter(self.y_test[:,i],  self.y_test_pred[:,i],  alpha=0.5, label='test')
             plt.xlabel('True'); plt.ylabel('Predicted'); plt.legend()
             plt.title('{} - $R^2_{}$={:.2f} ; $R^2_{}$={:.2f}'.format(name,'{train}',r2train,'{test}',r2test))
-        plt.savefig(figname + '.png')
+        plt.savefig('figures/' + figname + '.png')
         plt.show()
         
     def save_data(self, model):
         if self.save_result:
-            np.save('X_train.npy',self.X_train); np.save('X_valid.npy',self.X_valid); np.save('X_test.npy',self.X_test)
-            np.save('y_train.npy',self.y_train); np.save('y_valid.npy',self.y_valid); np.save('y_test.npy',self.y_test)
-            np.save('y_train_pred.npy', self.y_train_pred); np.save('y_test_pred.npy', self.y_test_pred)
+            np.save('data/X_train.npy',self.X_train); np.save('data/y_train.npy',self.y_train)
+            np.save('data/X_valid.npy',self.X_valid); np.save('data/y_valid.npy',self.y_valid)
+            np.save('data/X_test.npy',self.X_test);   np.save('data/y_test.npy',self.y_test)
+            np.save('data/y_train_pred.npy', self.y_train_pred); 
+            np.save('data/y_test_pred.npy', self.y_test_pred)
             torch.save(model.state_dict(), 'h2_cushion_rom.pt')
             print('\nData is Saved! ..... DONE!')
         else:
