@@ -5,13 +5,7 @@
 ########################## Summer 2023 #########################
 ################################################################
 from utils import *
-clear_session()
-check_tensorflow_gpu()
 
-het = H2_heterogeneity()
-het.return_data = True
-het.verbose     = True
-
-facies, fluvial_perm, gaussian_perm = het.create_data()
-heterogeneity = het.process_perm_poro()
-het.plot_samples()
+hete = Heterogeneity()
+facies = hete.load_facies()
+hete_fluv, hete_gaus = hete.load_perm_poro()

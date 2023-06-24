@@ -6,36 +6,27 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from time import time
-from keras.backend import clear_session
 
 from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-import tensorflow as tf
-from keras import Model
-from keras.layers import Input, Dense, Dropout, BatchNormalization, LeakyReLU
-from keras.optimizers import Nadam, Adam
-from keras.regularizers import L1, L2, L1L2
-from tensorflow_addons.activations import rrelu, gelu
-from tensorflow.keras.losses import Huber, LogCosh, MeanSquaredLogarithmicError
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchviz import make_dot
 
-def check_tensorflow_gpu():
-    sys_info = tf.sysconfig.get_build_info()
-    print('Checking Tensorflow Version:')
-    print('Tensorflow built with CUDA?',  tf.test.is_built_with_cuda())
-    print('Tensorflow version:', tf.__version__)
-    print('# GPU available:', len(tf.config.experimental.list_physical_devices('GPU')))
-    print("CUDA: {} | cuDNN: {}".format(sys_info["cuda_version"], sys_info["cudnn_version"]))
-    print(tf.config.list_physical_devices())
+def check_torch_gpu():
+    print('Torch build with CUDA?', torch.cuda.is_available())
     return None
 
-class h2proxy:
+class H2Toolkit:
     def __init__(self):
-        self.return_data = False
+        self.return_data = True
         self.verbose     = True
-        self.NN_verbose  = False
+        self.save_result = True
+        
         self.xcols       = range(12)
         self.ycols       = [12, 14, 15]
         self.noise_flag  = False
@@ -43,16 +34,6 @@ class h2proxy:
         self.gwrt_cutoff = 1e5
         self.std_outlier = 3
         self.test_size   = 0.3
-        self.reg         = L1(1e-5)
-        self.slope       = 0.3
-        self.drop        = 0.1
-        self.optim       = Adam(1e-3)
-        self.loss        = LogCosh()
-        self.metrics     = ['mae','mse']
-        self.epochs      = 200
-        self.batch_size  = 100
-        self.valid_split = 0.2
-        self.save_result = True
         
     #################### PROCESSING ####################
     def read_data(self, n_subsample=None):
@@ -103,52 +84,11 @@ class h2proxy:
     
     #################### ROM ####################   
     def make_model(self):
-        inp = Input(shape=(self.X_train.shape[-1]))
-        _ = Dense(64, activity_regularizer=self.reg)(inp)
-        _ = LeakyReLU(self.slope)(_)
-        _ = Dropout(self.drop)(_)
-        _ = BatchNormalization()(_)
-              
-        _ = Dense(128, activity_regularizer=self.reg)(_)
-        _ = LeakyReLU(self.slope)(_)
-        _ = Dropout(self.drop)(_)
-        _ = BatchNormalization()(_)
-        
-        _ = Dense(64, activity_regularizer=self.reg)(_)
-        _ = LeakyReLU(self.slope)(_)
-        _ = Dropout(self.drop)(_)
-        _ = BatchNormalization()(_)
-        
-        _ = Dense(32, activity_regularizer=self.reg)(_)
-        _ = LeakyReLU(self.slope)(_)
-        _ = Dropout(self.drop)(_)
-        _ = BatchNormalization()(_)
-
-        _ = Dense(16, activity_regularizer=self.reg)(_)
-        _ = LeakyReLU(self.slope)(_)
-        _ = Dropout(self.drop)(_)
-        _ = BatchNormalization()(_)
-        
-        out = Dense(self.y_train.shape[-1])(_)
-        self.model = Model(inp, out, name='H2_ROM')          
-        self.model.compile(optimizer=self.optim, loss=self.loss, metrics=self.metrics)
-        nparams = self.model.count_params()
-        start = time()
-        self.fit = self.model.fit(self.X_train, self.y_train,
-                                    epochs           = self.epochs,
-                                    batch_size       = self.batch_size,
-                                    validation_split = self.valid_split,
-				                    shuffle          = True,
-                                    verbose          = self.NN_verbose)
-        traintime = (time() - start)/60
-        if self.verbose:
-            print('# Parameters: {:,} | Training Time: {:.2f} minutes'.format(nparams, traintime))
-        if self.return_data:
-            return self.model, self.fit
+        return
     
     def make_predictions(self):
-        self.y_train_pred = pd.DataFrame(self.model.predict(self.X_train), columns=self.y_train.columns)
-        self.y_test_pred  = pd.DataFrame(self.model.predict(self.X_test),  columns=self.y_test.columns)
+        self.y_train_pred = None
+        self.y_test_pred  = None
         if self.return_data:
             return self.y_train_pred, self.y_test_pred
     
