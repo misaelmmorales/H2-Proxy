@@ -79,7 +79,7 @@ class Heterogeneity:
         perm_noAzim_625_750  = pd.read_csv('data/perm_noAzim_625_750.csv',  index_col=0)
         perm_noAzim_750_875  = pd.read_csv('data/perm_noAzim_750_875.csv',  index_col=0)
         perm_noAzim_875_1000 = pd.read_csv('data/perm_noAzim_875_1000.csv', index_col=0)
-        self.permf = np.hstack([perm_noAzim_1_125,   perm_noAzim_125_250, perm_noAzim_250_375, perm_noAzim_375_500,
+        permf = np.hstack([perm_noAzim_1_125,   perm_noAzim_125_250, perm_noAzim_250_375, perm_noAzim_375_500,
                         perm_noAzim_500_625, perm_noAzim_625_750, perm_noAzim_750_875, perm_noAzim_875_1000]).T
         perm_0azim   = pd.read_csv('data/perm_0azim.csv')
         perm_30azim  = pd.read_csv('data/perm_30azim.csv')
@@ -89,17 +89,17 @@ class Heterogeneity:
         perm_120azim = pd.read_csv('data/perm_120azim.csv')
         perm_135azim = pd.read_csv('data/perm_135azim.csv')
         perm_150azim = pd.read_csv('data/perm_150azim.csv')
-        self.permg = np.hstack([perm_0azim,   perm_30azim,  perm_45azim,  perm_60azim, 
+        permg = np.hstack([perm_0azim,   perm_30azim,  perm_45azim,  perm_60azim, 
                         perm_90azim,  perm_120azim, perm_135azim, perm_150azim]).T
         if self.verbose:
-            print('Permf: {} | Permg: {}'.format(self.permf.shape, self.permg.shape))
+            print('Permf: {} | Permg: {}'.format(permf.shape, permg.shape))
         # Fluvial fields
-        temp_fluv = self.permf.reshape(self.flat_dims).T
+        temp_fluv = permf.reshape(self.flat_dims).T
         temp_fluv_norm = MinMaxScaler((self.fluv_range[0], self.fluv_range[-1])).fit_transform(temp_fluv).T.reshape(self.standard_dims)
         perm_fluv = temp_fluv_norm * self.facies
         poro_fluv = 10**((perm_fluv-7)/10)
         # Gaussian fields
-        temp_gaus = self.permg.reshape(self.flat_dims).T
+        temp_gaus = permg.reshape(self.flat_dims).T
         temp_gaus_norm = MinMaxScaler((self.gaus_range[0], self.gaus_range[-1])).fit_transform(temp_gaus).T.reshape(self.standard_dims)
         perm_gaus = temp_gaus_norm + np.random.lognormal(self.lognormnoise[0], self.lognormnoise[1], (self.standard_dims))
         poro_gaus = 10**((perm_gaus-7)/10)
