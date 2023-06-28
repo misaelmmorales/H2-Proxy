@@ -110,3 +110,18 @@ class Heterogeneity:
             print('Fluvial heterogeneity: {} | Gaussian heterogeneity: {}'.format(self.hete_fluv.shape, self.hete_gaus.shape))
         if self.return_data:
             return self.hete_fluv, self.hete_gaus
+    
+    def plot_dataset(self, ncols=10, multiplier=75, figsize=(20,5), cmaps=['jet','jet','jet']):
+        fig, axs = plt.subplots(3, ncols, figsize=figsize)
+        im0, im1, im2 = {}, {}, {}
+        for j in range(ncols):
+            k = j*multiplier
+            im0 = axs[0,j].imshow(self.facies[k], cmap=cmaps[0])
+            im1 = axs[1,j].imshow(self.hete_fluv[k,:,:,0], cmap=cmaps[1])
+            im2 = axs[2,j].imshow(self.hete_fluv[k,:,:,1], cmap=cmaps[2])
+            for i in range(3):
+                axs[i,j].set(xticks=[], yticks=[])
+        plt.colorbar(im0, fraction=0.046, pad=0.04)
+        plt.colorbar(im1, fraction=0.046, pad=0.04)
+        plt.colorbar(im2, fraction=0.046, pad=0.04)
+        plt.show()

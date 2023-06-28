@@ -158,7 +158,7 @@ class H2Toolkit:
         start = time()
         for epoch in range(self.epochs):
             xtrain, xvalid, ytrain, yvalid = train_test_split(self.X_train_tensor, self.y_train_tensor, test_size=validation_split)
-            #training
+            # training
             model.train()
             epoch_loss = 0.0
             for i in range(0, len(xtrain), self.batch_size):
