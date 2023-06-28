@@ -79,8 +79,8 @@ class H2Toolkit:
         self.y_labels    = ['efft','ymft','gwrt']   #target names
         self.test_size   = 0.25                     #train-(test) split size
         self.epochs      = 100                      #training epochs
-        self.batch_size  = 200                      #batch size
-        self.delta_epoch = 20                       #monitor performance every n epochs
+        self.batch_size  = 256                      #batch size
+        self.delta_epoch = 10                       #print performance every n epochs
 
     def check_torch_gpu(self):
         '''
@@ -88,8 +88,10 @@ class H2Toolkit:
         '''
         torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
         count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
-        py_version = sys.version
-        print('Python version: {}'.format(py_version))
+        py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
+        print('-------------------------------------------------')
+        print('------------------ VERSION INFO -----------------')
+        print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
         print('Torch version: {}'.format(torch_version))
         print('Torch build with CUDA? {}'.format(cuda_avail))
         print('# Device(s) available: {}, Name(s): {}\n'.format(count, name))
@@ -102,54 +104,54 @@ class H2Toolkit:
         Call torch model, set optimizer & loss, and train .
         '''
         # model parameters
-        self.model = h2_cushion_rom(self.inp, self.out, hidden_sizes=[384,256,128,64]).to(self.device)
+        self.model = h2_cushion_rom(self.inp, self.out, hidden_sizes=[512,256,128,64]).to(self.device)
         optimizer = NAdam(self.model.parameters(), lr=2e-3)
         loss_fn = Custom_Loss()
         # tensorize
-        self.X_train_tensor = torch.Tensor(self.X_train).to(self.device)
-        self.X_test_tensor  = torch.Tensor(self.X_test).to(self.device)
-        self.y_train_tensor = torch.Tensor(self.y_train).to(self.device)
+        self.X_train_tensor = torch.Tensor(self.X_train).to(self.device) #tensorize X_train to gpu
+        self.y_train_tensor = torch.Tensor(self.y_train).to(self.device) #tensorize y_train to gpu
         # Training loop
-        loss, validation_loss = [], []
-        self.metrics = {'loss':[], 'validation_loss':[]}
-        start = time()
+        loss, validation_loss = [], []                                   #initialize losses to 0
+        self.metrics = {'loss':[], 'validation_loss':[]}                 #define train/validation metrics dict
+        start = time()                                                   #start training loop timer
         xtrain, xvalid, ytrain, yvalid = train_test_split(self.X_train_tensor, self.y_train_tensor, test_size=validation_split)
         print('----------------- MODEL TRAINING ----------------')
         for epoch in range(self.epochs):
             # training
-            self.model.train()
-            epoch_loss = 0.0
+            self.model.train()                                                   #set model as trainable
+            epoch_loss = 0.0                                                     #current epoch loss=0
             for i in range(0, len(xtrain), self.batch_size):
-                inp  = torch.Tensor(xtrain[i:i+self.batch_size]).to(self.device)
-                true = torch.Tensor(ytrain[i:i+self.batch_size]).to(self.device)
-                optimizer.zero_grad()
-                pred = self.model(inp)
-                loss = loss_fn(pred, true)
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()*inp.size(0)
+                inp  = torch.Tensor(xtrain[i:i+self.batch_size]).to(self.device) #tensorize xbatch to gpu
+                true = torch.Tensor(ytrain[i:i+self.batch_size]).to(self.device) #tensorize ybatch to gpu
+                optimizer.zero_grad()                                            #reset opt gradients
+                pred = self.model(inp)                                           #predict y_=f(xbatch)
+                loss = loss_fn(pred, true)                                       #define loss
+                loss.backward()                                                  #backpropagation
+                optimizer.step()                                                 #optimizer iteration
+                epoch_loss += loss.item()*inp.size(0)                            #current epoch loss
             self.metrics['loss'].append(epoch_loss/len(xtrain))
             # validation
-            self.model.eval()
-            validation_loss = 0.0
-            with torch.no_grad():
+            self.model.eval()                                                    #set model as non-trainable
+            validation_loss = 0.0                                                #current epoch val_loss=0
+            with torch.no_grad():                                                #non-trainable
                 for i in range(0, len(xvalid), self.batch_size):
-                    inp  = torch.Tensor(xvalid[i:i+self.batch_size]).to(self.device)
-                    true = torch.Tensor(yvalid[i:i+self.batch_size]).to(self.device)
-                    pred = self.model(inp)
-                    validation_loss += loss_fn(pred, true).item()*inp.size(0)
+                    inp  = torch.Tensor(xvalid[i:i+self.batch_size]).to(self.device) #tensorize xvbatch to gpu
+                    true = torch.Tensor(yvalid[i:i+self.batch_size]).to(self.device) #tensorize yvbatch to gpu
+                    pred = self.model(inp)                                       #predict yv_=f(yvbatch)
+                    validation_loss += loss_fn(pred, true).item()*inp.size(0)    #define loss and update
             self.metrics['validation_loss'].append(validation_loss/len(xvalid))
             if epoch%self.delta_epoch==0:
-                print('Epoch [{}/{}], Train Loss: {:.5f}, Val Loss: {:.5f}'.format(epoch, self.epochs, epoch_loss/len(xtrain), validation_loss/len(xvalid)))
-        traintime = (time() - start)/60
-        n_params  = sum(p.numel() for p in self.model.parameters())
+                print('Epoch [{}/{}], Train Loss: {:.5f}, Val Loss: {:.5f}'.format(epoch,self.epochs,epoch_loss/len(xtrain),validation_loss/len(xvalid)))
+        traintime = (time() - start)/60                                          #end training timer
+        n_params  = sum(p.numel() for p in self.model.parameters())              #count ROM # of parameters
         if self.verbose:
             print('# Parameters: {:,} | Training time: {:.3f} minutes\n'.format(n_params, traintime))
         if self.save_data:
             torch.save(self.model.state_dict(), 'h2_cushion_rom.pt')
         # predictions
-        self.y_train_pred = np.array(self.model(self.X_train_tensor).tolist())
-        self.y_test_pred  = np.array(self.model(self.X_test_tensor).tolist())
+        self.X_test_tensor  = torch.Tensor(self.X_test).to(self.device)        #tensorize X_test to gpu
+        self.y_train_pred = np.array(self.model(self.X_train_tensor).tolist()) #predict and de-tensorize y_train_pred
+        self.y_test_pred  = np.array(self.model(self.X_test_tensor).tolist())  #predict and de-tensorize y_test_pred
         if self.return_data:
             return self.y_train_pred, self.y_test_pred
 
@@ -158,14 +160,14 @@ class H2Toolkit:
         '''
         Import data from the 4 main CSV files [ch4, co2, n2, nocg].
         '''
-        data_ch4  = pd.read_csv('data/data_CH4.csv',  index_col=0)
-        data_co2  = pd.read_csv('data/data_CO2.csv',  index_col=0)
-        data_n2   = pd.read_csv('data/data_N2.csv',   index_col=0)
-        data_nocg = pd.read_csv('data/data_NOCG.csv', index_col=0) 
-        data_all  = pd.concat([data_ch4, data_co2, data_n2, data_nocg])
+        data_ch4  = pd.read_csv('data/data_CH4.csv',  index_col=0)      #CH4  cushion gas dataset
+        data_co2  = pd.read_csv('data/data_CO2.csv',  index_col=0)      #CO2  cushion gas dataset
+        data_n2   = pd.read_csv('data/data_N2.csv',   index_col=0)      #N2   cushion gas dataset
+        data_nocg = pd.read_csv('data/data_NOCG.csv', index_col=0)      #NONE cushion gas dataset 
+        data_all  = pd.concat([data_ch4, data_co2, data_n2, data_nocg]) #collect into a single dataframe
         if n_subsample:
-            idx = np.random.randint(0, data_all.shape[0], n_subsample)
-            self.all_data = data_all.iloc[idx,:]
+            idx = np.random.randint(0, data_all.shape[0], n_subsample)  #subsampling index
+            self.all_data = data_all.iloc[idx,:]                        #subsample dataframe
         else:
             self.all_data = data_all
         if self.verbose:
@@ -180,21 +182,21 @@ class H2Toolkit:
         (4) log-transform gwrt, (5) min-max scale, (6) train/test split.
         '''
         if self.noise_flag:
-            data = self.all_data + np.random.normal(self.noise[0], self.noise[1], (self.all_data.shape))
+            data = self.all_data + np.random.normal(self.noise[0], self.noise[1], (self.all_data.shape)) #add random noise
         else:
             data = self.all_data
-        data_shuffle = data.sample(frac=1)
-        data_trunc = data_shuffle[data_shuffle['gwrt']<self.gwrt_cutoff]
-        data_outl = data_trunc[(np.abs(zscore(data_trunc))<self.std_outlier)]
+        data_shuffle = data.sample(frac=1)                                    #shuffle dataset
+        data_trunc = data_shuffle[data_shuffle['gwrt']<self.gwrt_cutoff]      #truncate at gwrt threshold
+        data_outl = data_trunc[(np.abs(zscore(data_trunc))<self.std_outlier)] #remove outliers
         if restype=='SA':
-            data_outl.loc[:,'Sw'] = 1
-        self.data_clean = data_outl.dropna()  
-        X_data, y_data = self.data_clean.iloc[:, self.xcols], self.data_clean.iloc[:, self.ycols]
+            data_outl.loc[:,'Sw'] = 1                                         #if SA, let all Sw=1
+        self.data_clean = data_outl.dropna()                                  #drop nan's
+        X_data, y_data = self.data_clean.iloc[:, self.xcols], self.data_clean.iloc[:, self.ycols] #split (X,y)
         y_data_log = pd.DataFrame(columns=y_data.columns)
         y_data_log['efft'], y_data_log['ymft'] = y_data['efft'], y_data['ymft']
-        y_data_log['gwrt'] = np.log10(y_data['gwrt'])
+        y_data_log['gwrt'] = np.log10(y_data['gwrt'])                         #log-transform gwrt
         self.x_scaler, self.y_scaler = MinMaxScaler(), MinMaxScaler()
-        self.x_scaler.fit(X_data);   self.y_scaler.fit(y_data_log)
+        self.x_scaler.fit(X_data);   self.y_scaler.fit(y_data_log)            #Min-Max scaler [0,1]
         self.X_dataset = self.x_scaler.transform(X_data)
         self.y_dataset = self.y_scaler.transform(y_data_log)
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X_dataset, self.y_dataset, test_size=self.test_size)
@@ -272,7 +274,7 @@ class H2Toolkit:
         if self.return_plot:
             plt.show()
 
-    def plot_results(self, figsize=(15,4), figname='Results'):
+    def plot_results(self, figsize=(15,4), figname='results'):
         '''
         Cross-plot of true-vs-predicted values for each of the targets [efft, ymft, gwrt]
         '''
