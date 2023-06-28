@@ -16,7 +16,7 @@ h2.process_data() #h2.load_data()
 h2.train()
 h2.plot_loss()
 
-######################## PLOTS & PRINTS ########################
+######################## PLOTS & METRICS ########################
 h2.print_metrics()
 h2.plot_results()
 

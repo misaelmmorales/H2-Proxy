@@ -2,6 +2,7 @@
 ###################################################### IMPORT PACKAGES #################################################
 ########################################################################################################################
 import os
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -20,18 +21,22 @@ import torch.nn.functional as F
 from torchviz import make_dot
 
 class h2_cushion_rom(nn.Module):
+    '''
+    H2 Cushion Gas proxy model: a torch dense nn to estimate [efft,ymft,gwrt] from various 
+    geologic and operational parameters.
+    '''
     def __init__(self, in_features, out_features, hidden_sizes=[100,60,10]):
         super(h2_cushion_rom, self).__init__()
         assert len(hidden_sizes) >= 1 , 'specify at least one hidden layer'
         layers = nn.ModuleList()
         layer_sizes = [in_features] + hidden_sizes
         for dim_in, dim_out in zip(layer_sizes[:-1], layer_sizes[1:]):
-            layers.append(Linear(dim_in, dim_out))
-            layers.append(Dropout(0.125))
-            layers.append(BatchNorm1d(dim_out))
-            layers.append(LeakyReLU(0.2))
-        self.layers = nn.Sequential(*layers)
-        self.out_layer = Linear(hidden_sizes[-1], out_features)
+            layers.append(Linear(dim_in, dim_out))              #fully-connected
+            layers.append(Dropout(0.125))                       #dropout
+            layers.append(BatchNorm1d(dim_out))                 #batch normalization
+            layers.append(LeakyReLU(0.2))                       #activation
+        self.layers = nn.Sequential(*layers)                    #serialize
+        self.out_layer = Linear(hidden_sizes[-1], out_features) #output layer
     def forward(self, x):
         out = x.view(x.shape[0], -1)
         out = self.layers(out)
@@ -39,39 +44,53 @@ class h2_cushion_rom(nn.Module):
         return out
 
 class Custom_Loss(nn.Module):
+    '''
+    custom loss function with weighted average combination of (smooth) L1 and L2 metrics.
+    '''
     def __init__(self):
         super(Custom_Loss, self).__init__()
         self.l2_weight = 0.1
     def forward(self, pred, true):
-        l1_loss = nn.MSELoss()(pred, true)
-        l2_loss = nn.SmoothL1Loss()(pred, true)
+        l1_loss = nn.MSELoss()(pred, true)          #l2 loss
+        l2_loss = nn.SmoothL1Loss()(pred, true)     #l1 loss (smooth - Huber/L1)
         total_loss = (1-self.l2_weight)*l1_loss + self.l2_weight*l2_loss
         return total_loss
 
 class H2Toolkit:
+    '''
+    a large module for self-contained for:
+    (1) data loading and processing,
+    (2) defining the proxy model, training, and predictions,
+    (3) computing performance metrics and plotting results.
+    '''
     def __init__(self):
-        self.return_data = False
-        self.return_plot = False
-        self.save_data   = True
-        self.verbose     = True
-        self.inp         = 12
-        self.out         = 3
-        self.xcols       = range(12)
-        self.ycols       = [12, 14, 15]
-        self.noise_flag  = False
-        self.noise       = [0, 0.05]
-        self.gwrt_cutoff = 1e5
-        self.std_outlier = 3
-        self.y_labels    = ['efft','ymft','gwrt']
-        self.test_size   = 0.25
-        self.epochs      = 100
-        self.batch_size  = 200
-        self.delta_epoch = 20
+        self.return_data = False                    #return data?
+        self.return_plot = False                    #print plots?
+        self.save_data   = True                     #save data?
+        self.verbose     = True                     #print outputs?
+        self.inp         = 12                       #n features
+        self.out         = 3                        #n targets
+        self.xcols       = range(12)                #feature columns
+        self.ycols       = [12, 14, 15]             #target columns
+        self.noise_flag  = False                    #add noise?
+        self.noise       = [0, 0.05]                #added noise mean, std
+        self.gwrt_cutoff = 1e5                      #GWRT outlier threshold
+        self.std_outlier = 3                        #target outlier threshold
+        self.y_labels    = ['efft','ymft','gwrt']   #target names
+        self.test_size   = 0.25                     #train-(test) split size
+        self.epochs      = 100                      #training epochs
+        self.batch_size  = 200                      #batch size
+        self.delta_epoch = 20                       #monitor performance every n epochs
 
     def check_torch_gpu(self):
-        version, cuda_avail = torch.__version__, torch.cuda.is_available()
+        '''
+        Check torch build in python to ensure GPU is available for training.
+        '''
+        torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
         count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
-        print('Torch version: {}'.format(version))
+        py_version = sys.version
+        print('Python version: {}'.format(py_version))
+        print('Torch version: {}'.format(torch_version))
         print('Torch build with CUDA? {}'.format(cuda_avail))
         print('# Device(s) available: {}, Name(s): {}\n'.format(count, name))
         self.device = torch.device('cuda' if cuda_avail else 'cpu')
@@ -79,6 +98,9 @@ class H2Toolkit:
     
     #################### ROM ####################
     def train(self, validation_split=0.2):
+        '''
+        Call torch model, set optimizer & loss, and train .
+        '''
         # model parameters
         self.model = h2_cushion_rom(self.inp, self.out, hidden_sizes=[384,256,128,64]).to(self.device)
         optimizer = NAdam(self.model.parameters(), lr=2e-3)
@@ -92,6 +114,7 @@ class H2Toolkit:
         self.metrics = {'loss':[], 'validation_loss':[]}
         start = time()
         xtrain, xvalid, ytrain, yvalid = train_test_split(self.X_train_tensor, self.y_train_tensor, test_size=validation_split)
+        print('----------------- MODEL TRAINING ----------------')
         for epoch in range(self.epochs):
             # training
             self.model.train()
@@ -132,6 +155,9 @@ class H2Toolkit:
 
     #################### PROCESSING ####################
     def read_data(self, n_subsample=None):
+        '''
+        Import data from the 4 main CSV files [ch4, co2, n2, nocg].
+        '''
         data_ch4  = pd.read_csv('data/data_CH4.csv',  index_col=0)
         data_co2  = pd.read_csv('data/data_CO2.csv',  index_col=0)
         data_n2   = pd.read_csv('data/data_N2.csv',   index_col=0)
@@ -143,11 +169,16 @@ class H2Toolkit:
         else:
             self.all_data = data_all
         if self.verbose:
+            print('---------------- DATA INFORMATION ---------------')
             print('CH4: {} | CO2: {} | N2: {} | NOCG: {}'.format(data_ch4.shape, data_co2.shape, data_n2.shape, data_nocg.shape))
         if self.return_data:
             return self.all_data
 
     def process_data(self, restype='SA'):
+        '''
+        Process the data to: (1) shuffle, (2) truncate at large gwrt, (3) remove outliers, 
+        (4) log-transform gwrt, (5) min-max scale, (6) train/test split.
+        '''
         if self.noise_flag:
             data = self.all_data + np.random.normal(self.noise[0], self.noise[1], (self.all_data.shape))
         else:
@@ -183,6 +214,9 @@ class H2Toolkit:
             return datasets, train_test_data, scalers 
 
     def load_data(self):
+        '''
+        Directly load (X_train, X_test, y_train, y_test) from pre-saved npy files.
+        '''
         self.X_dataset = np.load('data/X_data.npy')
         self.y_dataset = np.load('data/y_data.npy')
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X_dataset, self.y_dataset, test_size=self.test_size)
@@ -194,8 +228,11 @@ class H2Toolkit:
             train_test_data = {'X_train':self.X_train, 'X_test':self.X_test, 'y_train':self.y_train, 'y_test':self.y_test}
             return datasets, train_test_data 
     
-    #################### PLOTS & PRINTS ####################
+    #################### PLOTS & METRICS ####################
     def print_metrics(self):
+        '''
+        Compute and print performance metrics: R^2, MSE, MAE. This is done for the overall dataset, as well as per-target basis.
+        '''
         self.tot_train_r2,  self.tot_test_r2  = r2_score(self.y_train, self.y_train_pred),  r2_score(self.y_test, self.y_test_pred)
         tot_train_mse, tot_test_mse = mean_squared_error(self.y_train, self.y_train_pred),  mean_squared_error(self.y_test, self.y_test_pred)
         tot_train_mae, tot_test_mae = mean_absolute_error(self.y_train, self.y_train_pred), mean_absolute_error(self.y_test, self.y_test_pred)
@@ -211,11 +248,17 @@ class H2Toolkit:
             print('{} TRAIN: R2={:.3f}    | TEST: R2={:.3f}'.format(name, trainr2, testr2))
             print('{} TRAIN: MSE={:.5f} | TEST: MSE={:.5f}'.format(name, trainmse, testmse))   
             print('{} TRAIN: MAE={:.5f} | TEST: MAE={:.5f}'.format(name, trainmae, testmae))
+        print('-------------------------------------------------')
+        print('---------------------- DONE ---------------------')
+        print('-------------------------------------------------')
         if self.save_data:
             metrics = np.array([self.tot_train_r2, self.tot_test_r2, tot_train_mse, tot_test_mse, tot_train_mae, tot_test_mae])
             np.save('data/metrics.npy', metrics)
 
     def plot_loss(self, title='', figsize=(4,3)):
+        '''
+        Plot the training performance (loss per epoch).
+        '''
         if figsize:
             plt.figure(figsize=figsize)
         loss, val = self.metrics['loss'], self.metrics['validation_loss']
@@ -223,13 +266,16 @@ class H2Toolkit:
         iterations = np.arange(epochs)
         plt.plot(iterations, loss, '-', label='loss')
         plt.plot(iterations, val,  '-', label='validation loss')
-        plt.title(title+' Training Loss vs epochs'); plt.legend()
+        plt.title(title+' Training Loss vs. Epochs'); plt.legend()
         plt.xlabel('Epochs'); plt.ylabel('Loss'); plt.xticks(iterations[::epochs//10])
         plt.savefig('figures/training_performance.png')
         if self.return_plot:
             plt.show()
 
     def plot_results(self, figsize=(15,4), figname='Results'):
+        '''
+        Cross-plot of true-vs-predicted values for each of the targets [efft, ymft, gwrt]
+        '''
         plt.figure(figsize=figsize)
         plt.suptitle(figname + ' -- Train $R^2$={:.3f} | Test $R^2$={:.3f}'.format(self.tot_train_r2, self.tot_test_r2))
         for i in range(3):
