@@ -1,11 +1,25 @@
 ########################################################################################################################
 ###################################################### IMPORT PACKAGES #################################################
 ########################################################################################################################
-import os
+import os, sys, glob, math, re
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import pyvista as pv
+from time import time
+
+from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+import torch
+import torch.nn as nn
+from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
+from torch.optim import NAdam
+import torch.nn.functional as F
+from torchviz import make_dot
 
 class Heterogeneity:
     def __init__(self):
@@ -24,6 +38,27 @@ class Heterogeneity:
         self.save_data      = False
         self.verbose        = True
         
+    def check_torch_gpu(self):
+        '''
+        Check torch build in python to ensure GPU is available for training.
+        '''
+        torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
+        count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
+        py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
+        print('-------------------------------------------------')
+        print('------------------ VERSION INFO -----------------')
+        print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
+        print('Torch version: {}'.format(torch_version))
+        print('Torch build with CUDA? {}'.format(cuda_avail))
+        print('# Device(s) available: {}, Name(s): {}\n'.format(count, name))
+        self.device = torch.device('cuda' if cuda_avail else 'cpu')
+        return None
+    
+    
+    
+    
+    
+    #################### DATA LOADING ####################    
     def make_facies(self):
         np.random.seed(self.seed)
         fname, k = {}, 0
@@ -110,18 +145,27 @@ class Heterogeneity:
             print('Fluvial heterogeneity: {} | Gaussian heterogeneity: {}'.format(self.hete_fluv.shape, self.hete_gaus.shape))
         if self.return_data:
             return self.hete_fluv, self.hete_gaus
-    
-    def plot_dataset(self, ncols=10, multiplier=75, figsize=(20,5), cmaps=['jet','jet','jet']):
-        fig, axs = plt.subplots(3, ncols, figsize=figsize)
-        im0, im1, im2 = {}, {}, {}
-        for j in range(ncols):
-            k = j*multiplier
-            im0 = axs[0,j].imshow(self.facies[k], cmap=cmaps[0])
-            im1 = axs[1,j].imshow(self.hete_fluv[k,:,:,0], cmap=cmaps[1])
-            im2 = axs[2,j].imshow(self.hete_fluv[k,:,:,1], cmap=cmaps[2])
-            for i in range(3):
-                axs[i,j].set(xticks=[], yticks=[])
-        plt.colorbar(im0, fraction=0.046, pad=0.04)
-        plt.colorbar(im1, fraction=0.046, pad=0.04)
-        plt.colorbar(im2, fraction=0.046, pad=0.04)
-        plt.show()
+        
+    def load_datasets(self):
+        hete_fluv = np.zeros((self.n_realizations,self.dim,self.dim,2))
+        hete_gaus = np.zeros((self.n_realizations,self.dim,self.dim,2))
+        facies = np.zeros(self.standard_dims)
+        for i in range(self.n_realizations):
+            hete_fluv[i] = np.load('data/hete_fluv/fluvial{}.npy'.format(i))
+            hete_gaus[i] = np.load('data/hete_gaus/gaussian{}.npy'.format(i))
+            facies[i] = np.array(pd.read_csv('data/facies/facies{}.csv'.format(i), index_col=0))
+        mask_0azim   = np.zeros((125,self.dim,self.dim))
+        mask_30azim  = np.zeros((125,self.dim,self.dim))+30
+        mask_45azim  = np.zeros((125,self.dim,self.dim))+45
+        mask_60azim  = np.zeros((125,self.dim,self.dim))+60
+        mask_90azim  = np.zeros((125,self.dim,self.dim))+90
+        mask_120azim = np.zeros((125,self.dim,self.dim))+120
+        mask_135azim = np.zeros((125,self.dim,self.dim))+135
+        mask_150azim = np.zeros((125,self.dim,self.dim))+150
+        angle_mask = np.concatenate([mask_0azim, mask_30azim, mask_45azim, mask_60azim, mask_90azim, mask_120azim, mask_135azim, mask_150azim])
+        self.fluvial_dataset = np.concatenate([hete_fluv, np.expand_dims(facies,-1)], -1)
+        self.gaussian_dataset = np.concatenate([hete_gaus, np.expand_dims(angle_mask,-1)], -1)
+        if self.verbose:
+            print('Fluvial: {} | Gaussian: {}'.format(self.fluvial_dataset.shape, self.gaussian_dataset.shape))    
+        if self.return_data:
+            return self.fluvial_dataset, self.gaussian_dataset

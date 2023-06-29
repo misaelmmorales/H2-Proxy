@@ -7,5 +7,7 @@
 from utils import *
 
 hete = Heterogeneity()
+hete.check_torch_gpu()
+
 facies = hete.load_facies()
 hete_fluv, hete_gaus = hete.load_perm_poro()
