@@ -1,7 +1,7 @@
 ########################################################################################################################
 ###################################################### IMPORT PACKAGES #################################################
 ########################################################################################################################
-import os, sys, glob, math, re
+import os, sys, glob, math, re, cv2
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,7 @@ from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
 from torch.optim import NAdam
 import torch.nn.functional as F
 from torchviz import make_dot
+import torchio as tio
 
 class Heterogeneity:
     def __init__(self):
@@ -31,7 +32,7 @@ class Heterogeneity:
         self.flat_dims      = (1000, 256*256)
         self.layers         = [48,64,80,96]
         self.facies_range   = [0.75, 1.25]
-        self.fluv_range     = [0, 2.25]
+        self.fluv_range     = [0, 2.35]
         self.gaus_range     = [0, 2.90]
         self.lognormnoise   = [-5, 0.1]
         self.seed           = 424242
@@ -53,10 +54,6 @@ class Heterogeneity:
         print('# Device(s) available: {}, Name(s): {}\n'.format(count, name))
         self.device = torch.device('cuda' if cuda_avail else 'cpu')
         return None
-    
-    
-    
-    
     
     #################### DATA LOADING ####################    
     def make_facies(self):
@@ -84,20 +81,20 @@ class Heterogeneity:
         if self.save_data:
             if self.verbose:
                 print('Saving Files...')
-            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,:250].to_csv('data/facies_1_250.csv')
-            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,250:500].to_csv('data/facies_250_500.csv')
-            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,500:750].to_csv('data/facies_500_750.csv')
-            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,750:].to_csv('data/facies_750_1000.csv')
+            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,:250].to_csv('data2D/facies_1_250.csv')
+            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,250:500].to_csv('data2D/facies_250_500.csv')
+            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,500:750].to_csv('data2D/facies_500_750.csv')
+            pd.DataFrame(self.facies.reshape(self.flat_dims).T).iloc[:,750:].to_csv('data2D/facies_750_1000.csv')
         if self.verbose:
             print('...DONE!')
         if self.return_data:
             return self.facies
 
     def load_facies(self):
-        f1 = pd.read_csv('data/facies_1_250.csv',    index_col=0)
-        f2 = pd.read_csv('data/facies_250_500.csv',  index_col=0)
-        f3 = pd.read_csv('data/facies_500_750.csv',  index_col=0)
-        f4 = pd.read_csv('data/facies_750_1000.csv', index_col=0)
+        f1 = pd.read_csv('data2D/facies_1_250.csv',    index_col=0)
+        f2 = pd.read_csv('data2D/facies_250_500.csv',  index_col=0)
+        f3 = pd.read_csv('data2D/facies_500_750.csv',  index_col=0)
+        f4 = pd.read_csv('data2D/facies_750_1000.csv', index_col=0)
         self.facies = np.concatenate([f1,f2,f3,f4],-1).T.reshape(self.standard_dims)
         if self.verbose:
             print('Facies shape:', self.facies.shape)
@@ -106,24 +103,24 @@ class Heterogeneity:
 
     def load_perm_poro(self):
         np.random.seed(self.seed)
-        perm_noAzim_1_125    = pd.read_csv('data/perm_noAzim_1_125.csv',    index_col=0)
-        perm_noAzim_125_250  = pd.read_csv('data/perm_noAzim_125_250.csv',  index_col=0)
-        perm_noAzim_250_375  = pd.read_csv('data/perm_noAzim_250_375.csv',  index_col=0)
-        perm_noAzim_375_500  = pd.read_csv('data/perm_noAzim_375_500.csv',  index_col=0)
-        perm_noAzim_500_625  = pd.read_csv('data/perm_noAzim_500_625.csv',  index_col=0)
-        perm_noAzim_625_750  = pd.read_csv('data/perm_noAzim_625_750.csv',  index_col=0)
-        perm_noAzim_750_875  = pd.read_csv('data/perm_noAzim_750_875.csv',  index_col=0)
-        perm_noAzim_875_1000 = pd.read_csv('data/perm_noAzim_875_1000.csv', index_col=0)
+        perm_noAzim_1_125    = pd.read_csv('data2D/perm_noAzim_1_125.csv',    index_col=0)
+        perm_noAzim_125_250  = pd.read_csv('data2D/perm_noAzim_125_250.csv',  index_col=0)
+        perm_noAzim_250_375  = pd.read_csv('data2D/perm_noAzim_250_375.csv',  index_col=0)
+        perm_noAzim_375_500  = pd.read_csv('data2D/perm_noAzim_375_500.csv',  index_col=0)
+        perm_noAzim_500_625  = pd.read_csv('data2D/perm_noAzim_500_625.csv',  index_col=0)
+        perm_noAzim_625_750  = pd.read_csv('data2D/perm_noAzim_625_750.csv',  index_col=0)
+        perm_noAzim_750_875  = pd.read_csv('data2D/perm_noAzim_750_875.csv',  index_col=0)
+        perm_noAzim_875_1000 = pd.read_csv('data2D/perm_noAzim_875_1000.csv', index_col=0)
         permf = np.hstack([perm_noAzim_1_125,   perm_noAzim_125_250, perm_noAzim_250_375, perm_noAzim_375_500,
                         perm_noAzim_500_625, perm_noAzim_625_750, perm_noAzim_750_875, perm_noAzim_875_1000]).T
-        perm_0azim   = pd.read_csv('data/perm_0azim.csv')
-        perm_30azim  = pd.read_csv('data/perm_30azim.csv')
-        perm_45azim  = pd.read_csv('data/perm_45azim.csv')
-        perm_60azim  = pd.read_csv('data/perm_60azim.csv')
-        perm_90azim  = pd.read_csv('data/perm_90azim.csv')
-        perm_120azim = pd.read_csv('data/perm_120azim.csv')
-        perm_135azim = pd.read_csv('data/perm_135azim.csv')
-        perm_150azim = pd.read_csv('data/perm_150azim.csv')
+        perm_0azim   = pd.read_csv('data2D/perm_0azim.csv')
+        perm_30azim  = pd.read_csv('data2D/perm_30azim.csv')
+        perm_45azim  = pd.read_csv('data2D/perm_45azim.csv')
+        perm_60azim  = pd.read_csv('data2D/perm_60azim.csv')
+        perm_90azim  = pd.read_csv('data2D/perm_90azim.csv')
+        perm_120azim = pd.read_csv('data2D/perm_120azim.csv')
+        perm_135azim = pd.read_csv('data2D/perm_135azim.csv')
+        perm_150azim = pd.read_csv('data2D/perm_150azim.csv')
         permg = np.hstack([perm_0azim,   perm_30azim,  perm_45azim,  perm_60azim, 
                         perm_90azim,  perm_120azim, perm_135azim, perm_150azim]).T
         if self.verbose:
@@ -151,9 +148,9 @@ class Heterogeneity:
         hete_gaus = np.zeros((self.n_realizations,self.dim,self.dim,2))
         facies = np.zeros(self.standard_dims)
         for i in range(self.n_realizations):
-            hete_fluv[i] = np.load('data/hete_fluv/fluvial{}.npy'.format(i))
-            hete_gaus[i] = np.load('data/hete_gaus/gaussian{}.npy'.format(i))
-            facies[i] = np.array(pd.read_csv('data/facies/facies{}.csv'.format(i), index_col=0))
+            hete_fluv[i] = np.load('data2D/hete_fluv/fluvial{}.npy'.format(i))
+            hete_gaus[i] = np.load('data2D/hete_gaus/gaussian{}.npy'.format(i))
+            facies[i] = np.array(pd.read_csv('data2D/facies/facies{}.csv'.format(i), index_col=0))
         mask_0azim   = np.zeros((125,self.dim,self.dim))
         mask_30azim  = np.zeros((125,self.dim,self.dim))+30
         mask_45azim  = np.zeros((125,self.dim,self.dim))+45
