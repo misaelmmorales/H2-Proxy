@@ -32,7 +32,7 @@ class Heterogeneity:
         self.flat_dims      = (1000, 256*256)
         self.layers         = [48,64,80,96]
         self.facies_range   = [0.75, 1.25]
-        self.fluv_range     = [0, 2.35]
+        self.fluv_range     = [0, 2.80]
         self.gaus_range     = [0, 2.90]
         self.lognormnoise   = [-5, 0.1]
         self.seed           = 424242
