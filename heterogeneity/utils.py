@@ -203,7 +203,7 @@ class Heterogeneity:
     #     k = np.expand_dims(perm_fluv.reshape(520,128,128,16), -1)
     #     p = np.expand_dims(poro_fluv.reshape(520,128,128,16), -1)
     #     hete_fluv = np.concatenate([k,p], -1)
-    #     return None
+    #     return Nones
     
 def double_convolution(in_channels, out_channels):
     conv_op = Sequential(
