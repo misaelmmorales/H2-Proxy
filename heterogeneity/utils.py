@@ -31,7 +31,10 @@ class Heterogeneity:
     def __init__(self):
         self.return_data    = True
         self.ti_dir         = 'C:/Users/381792/Documents/MLTrainingImages/'
+        #self.data_dir       = '//dcstorage.lanl.gov/MFR2/misael'
+        self.data_dir       = '/project/MFR2/misael'
         self.n_realizations = 1000
+        self.n_timesteps    = 61
         self.dim            = 256
         self.standard_dims  = (1000, 256,256)
         self.flat_dims      = (1000, 256*256)
@@ -40,6 +43,7 @@ class Heterogeneity:
         self.fluv_range     = [0.00, 2.80]
         self.gaus_range     = [0.00, 2.90]
         self.lognormnoise   = [-5.0, 0.1]
+        self.theta          = [0, 30, 45, 60, 90, 120, 135, 150]
         self.seed           = 424242
         self.save_data      = False
         self.verbose        = True
@@ -170,7 +174,7 @@ class Heterogeneity:
         if self.verbose:
             print('Fluvial: {} | Gaussian: {}'.format(self.fluvial_dataset.shape, self.gaussian_dataset.shape))    
         if self.return_data:
-            return self.fluvial_dataset, self.gaussian_dataset
+            return self.fluvial_dataset, self.gaussian_dataset        
         
     # def load_perm_poro_3d(self):
     #     perm_0azim   = pd.read_csv('data3D/perm_0azim.csv')
