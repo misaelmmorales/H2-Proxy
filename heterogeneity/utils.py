@@ -9,8 +9,10 @@ import matplotlib.pyplot as plt
 import pyvista as pv
 from time import time
 
+from cv2 import resize
 from scipy.stats import zscore
 from scipy.io import loadmat, savemat
+from numpy.matlib import repmat
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -31,8 +33,7 @@ class Heterogeneity:
     def __init__(self):
         self.return_data    = True
         self.ti_dir         = 'C:/Users/381792/Documents/MLTrainingImages/'
-        #self.data_dir       = '//dcstorage.lanl.gov/MFR2/misael'
-        self.data_dir       = '/project/MFR2/misael'
+        self.data_dir       = '//dcstorage.lanl.gov/MFR2/misael'
         self.n_realizations = 1000
         self.n_timesteps    = 61
         self.dim            = 256
@@ -260,3 +261,4 @@ class h2_hete_rom(nn.Module):
         x    = self.up_convolution_4(torch.cat([down_1, up_4], 1))
         out   = self.out(x)
         return out
+    
