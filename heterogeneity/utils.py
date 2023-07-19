@@ -19,13 +19,15 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn import Sequential
 from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
 from torch.nn import Conv2d, ConvTranspose2d, MaxPool2d, BatchNorm2d, InstanceNorm2d
 from torch.optim import NAdam, Adam
+
 from torch.utils.data import Dataset, TensorDataset, DataLoader
-import torch.nn.functional as F
 from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
+from torchvision.utils import save_image
 from torchsummary import summary
 from torchviz import make_dot
 import torchio as tio
@@ -212,9 +214,9 @@ def double_convolution(in_channels, out_channels):
         ReLU(inplace=True))
     return conv_op
 
-class h2_hete_rom(nn.Module):
+class Unet_rom(nn.Module):
     def __init__(self):
-        super(h2_hete_rom, self).__init__()
+        super(Unet_rom, self).__init__()
         # Encoder
         self.max_pool2d = nn.MaxPool2d(kernel_size=2, stride=2)
         self.down_convolution_1 = double_convolution(4, 16)
@@ -256,35 +258,174 @@ class h2_hete_rom(nn.Module):
         out  = self.out(x)
         return out
     
-    # def load_perm_poro_3d(self):
-    #     perm_0azim   = pd.read_csv('data3D/perm_0azim.csv')
-    #     perm_30azim  = pd.read_csv('data3D/perm_30azim.csv')
-    #     perm_45azim  = pd.read_csv('data3D/perm_45azim.csv')
-    #     perm_60azim  = pd.read_csv('data3D/perm_60azim.csv')
-    #     perm_90azim  = pd.read_csv('data3D/perm_90azim.csv')
-    #     perm_120azim = pd.read_csv('data3D/perm_120azim.csv')
-    #     perm_135azim = pd.read_csv('data3D/perm_135azim.csv')
-    #     perm_150azim = pd.read_csv('data3D/perm_150azim.csv')
-    #     perm_noAzim_1 = pd.read_csv('data3D/perm_noazim_3d_1_65.csv')
-    #     perm_noAzim_2 = pd.read_csv('data3D/perm_noazim_3d_65_130.csv')
-    #     perm_noAzim_3 = pd.read_csv('data3D/perm_noazim_3d_130_195.csv')
-    #     perm_noAzim_4 = pd.read_csv('data3D/perm_noazim_3d_195_260.csv')
-    #     perm_noAzim_5 = pd.read_csv('data3D/perm_noazim_3d_260_325.csv')
-    #     perm_noAzim_6 = pd.read_csv('data3D/perm_noazim_3d_325_390.csv')
-    #     perm_noAzim_7 = pd.read_csv('data3D/perm_noazim_3d_390_455.csv')
-    #     perm_noAzim_8 = pd.read_csv('data3D/perm_noazim_3d_455_520.csv')
-    #     permg = np.hstack([perm_0azim, perm_30azim, perm_45azim, perm_60azim, 
-    #                        perm_90azim, perm_120azim, perm_135azim, perm_150azim]).T
-    #     permf = np.hstack([perm_noAzim_1, perm_noAzim_2, perm_noAzim_3, perm_noAzim_4,
-    #                        perm_noAzim_5, perm_noAzim_6, perm_noAzim_7, perm_noAzim_8]).T
-    #     permf_norm = MinMaxScaler((0, 2.80)).fit_transform(permf.T).T
-    #     permg_norm = MinMaxScaler((0, 2.90)).fit_transform(permg.T).T
-    #     facies = np.zeros((520,128*128*16))
-    #     for i in range(520):
-    #         facies[i] = np.load('data3D/facies/facies{}.npy'.format(i)).reshape(128*128*16)
-    #     perm_fluv = permf_norm * facies
-    #     poro_fluv = 10**((perm_fluv-7)/10)
-    #     k = np.expand_dims(perm_fluv.reshape(520,128,128,16), -1)
-    #     p = np.expand_dims(poro_fluv.reshape(520,128,128,16), -1)
-    #     hete_fluv = np.concatenate([k,p], -1)
-    #     return Nones
+class Generator(nn.Module):
+    def __init__(self, input_channels, output_channels):
+        super(Generator, self).__init__()
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Conv2d(input_channels, 64, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True))
+        # Latent Transformer
+        self.latent_transformer = SwinTransformer(512, output_channels)
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, output_channels, kernel_size=4, stride=2, padding=1),
+            nn.Tanh())
+    def forward(self, x):
+        encoded = self.encoder(x)
+        latent  = self.latent_transformer(encoded)
+        decoded = self.decoder(latent)
+        return decoded
+    
+class Discriminator(nn.Module):
+    def __init__(self, input_channels):
+        super(Discriminator, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(input_channels, 64, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, kernel_size=4, stride=1, padding=1),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=1))
+    def forward(self, x):
+        out = self.model(x)
+        return out
+
+class CycleGAN(nn.Module):
+    def __init__(self, input_channels_X, output_channels_Y, input_channels_Y, output_channels_X):
+        super(CycleGAN, self).__init__()
+        self.generator_XY = Generator(input_channels_X, output_channels_Y)
+        self.generator_YX = Generator(input_channels_Y, output_channels_X)
+        self.discriminator_X = Discriminator(input_channels_X)
+        self.discriminator_Y = Discriminator(input_channels_Y)
+    def forward(self, x, y):
+        fake_Y = self.generator_XY(x)
+        fake_X = self.generator_YX(y)
+        reconstructed_X = self.generator_YX(fake_Y)
+        reconstructed_Y = self.generator_XY(fake_X)
+        return fake_Y, fake_X, reconstructed_X, reconstructed_Y
+    
+class NumpyDataset(Dataset):
+    def __init__(self, X, y):
+        self.X = torch.from_numpy(X).float()
+        self.y = torch.from_numpy(y).float()
+    def __len__(self):
+        return len(self.X)
+    def __getitem__(self, index):
+        img_x = self.X[index]
+        img_y = self.y[index]        
+        return img_x, img_y
+     
+class PatchMerging(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=2):
+        super(PatchMerging, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+        self.norm = nn.LayerNorm(out_channels)
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.norm(x)
+        x = F.gelu(x)
+        x = x.permute(0, 2, 3, 1)  # B, H, W, C
+        B, H, W, C = x.shape
+        x = x.reshape(B, H // 2, 2, W // 2, 2, C)
+        x = x.permute(0, 1, 3, 2, 4, 5)  # B, H // 2, W // 2, 2, 2, C
+        x = x.reshape(B, H // 2, W // 2, -1)
+        x = x.permute(0, 3, 1, 2)  # B, 4C, H // 2, W // 2
+        return x
+
+class PatchEmbedding(nn.Module):
+    def __init__(self, in_channels, embed_dim):
+        super(PatchEmbedding, self).__init__()
+        self.conv = nn.Conv2d(in_channels, embed_dim, kernel_size=4, stride=4)
+        self.norm = nn.LayerNorm(embed_dim)
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.norm(x)
+        x = x.permute(0, 2, 3, 1)  # B, H, W, C
+        return x
+
+class SwinBlock(nn.Module):
+    def __init__(self, dim, num_heads, mlp_ratio=4):
+        super(SwinBlock, self).__init__()
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, dim * mlp_ratio),
+            nn.GELU(),
+            nn.Linear(dim * mlp_ratio, dim))
+    def forward(self, x):
+        residual = x
+        x = self.norm1(x)
+        x = x.permute(1, 0, 2)  # H, B, C
+        x, _ = self.attn(x, x, x)
+        x = x.permute(1, 0, 2)  # B, H, C
+        x = x + residual
+        residual = x
+        x = self.norm2(x)
+        x = self.mlp(x)
+        x = x + residual
+        return x
+
+class SwinTransformer(nn.Module):
+    def __init__(self, in_channels, out_channels, img_size=64, patch_size=4, embed_dim=96, depths=[2, 2, 6, 2], num_heads=3, mlp_ratio=4):
+        super(SwinTransformer, self).__init__()
+        assert img_size % patch_size == 0, "Image size must be divisible by patch size"
+        num_patches = (img_size // patch_size) ** 2
+        self.patch_embed = PatchEmbedding(in_channels, embed_dim)
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        self.blocks = nn.ModuleList([
+            SwinBlock(embed_dim, num_heads, mlp_ratio) for _ in range(sum(depths))
+        ])
+        self.norm = nn.LayerNorm(embed_dim)
+        self.head = nn.Linear(embed_dim, out_channels)
+    def forward(self, x):
+        x = self.patch_embed(x)
+        B, N, C = x.shape
+        x = x.flatten(2).transpose(1, 2)
+        x = torch.cat([self.pos_embed[:, :N], x], dim=1)
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        x = x.mean(dim=1)
+        x = self.head(x)
+        return x
