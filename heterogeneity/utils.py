@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Sequential
 from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
-from torch.nn import Conv2d, ConvTranspose2d, MaxPool2d, BatchNorm2d
+from torch.nn import Conv2d, ConvTranspose2d, MaxPool2d, BatchNorm2d, InstanceNorm2d
 from torch.optim import NAdam, Adam
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 import torch.nn.functional as F
@@ -31,7 +31,9 @@ import torchio as tio
 
 class Heterogeneity:
     def __init__(self):
+        self.verbose        = True
         self.return_data    = True
+        self.save_data      = False
         self.ti_dir         = 'C:/Users/381792/Documents/MLTrainingImages/'
         self.data_dir       = '//dcstorage.lanl.gov/MFR2/misael'
         self.n_realizations = 1000
@@ -46,8 +48,6 @@ class Heterogeneity:
         self.lognormnoise   = [-5.0, 0.1]
         self.theta          = [0, 30, 45, 60, 90, 120, 135, 150]
         self.seed           = 424242
-        self.save_data      = False
-        self.verbose        = True
         
     def check_torch_gpu(self):
         '''
@@ -175,62 +175,53 @@ class Heterogeneity:
         if self.verbose:
             print('Fluvial: {} | Gaussian: {}'.format(self.fluvial_dataset.shape, self.gaussian_dataset.shape))    
         if self.return_data:
-            return self.fluvial_dataset, self.gaussian_dataset        
+            return self.fluvial_dataset, self.gaussian_dataset    
         
-    # def load_perm_poro_3d(self):
-    #     perm_0azim   = pd.read_csv('data3D/perm_0azim.csv')
-    #     perm_30azim  = pd.read_csv('data3D/perm_30azim.csv')
-    #     perm_45azim  = pd.read_csv('data3D/perm_45azim.csv')
-    #     perm_60azim  = pd.read_csv('data3D/perm_60azim.csv')
-    #     perm_90azim  = pd.read_csv('data3D/perm_90azim.csv')
-    #     perm_120azim = pd.read_csv('data3D/perm_120azim.csv')
-    #     perm_135azim = pd.read_csv('data3D/perm_135azim.csv')
-    #     perm_150azim = pd.read_csv('data3D/perm_150azim.csv')
-    #     perm_noAzim_1 = pd.read_csv('data3D/perm_noazim_3d_1_65.csv')
-    #     perm_noAzim_2 = pd.read_csv('data3D/perm_noazim_3d_65_130.csv')
-    #     perm_noAzim_3 = pd.read_csv('data3D/perm_noazim_3d_130_195.csv')
-    #     perm_noAzim_4 = pd.read_csv('data3D/perm_noazim_3d_195_260.csv')
-    #     perm_noAzim_5 = pd.read_csv('data3D/perm_noazim_3d_260_325.csv')
-    #     perm_noAzim_6 = pd.read_csv('data3D/perm_noazim_3d_325_390.csv')
-    #     perm_noAzim_7 = pd.read_csv('data3D/perm_noazim_3d_390_455.csv')
-    #     perm_noAzim_8 = pd.read_csv('data3D/perm_noazim_3d_455_520.csv')
-    #     permg = np.hstack([perm_0azim, perm_30azim, perm_45azim, perm_60azim, 
-    #                        perm_90azim, perm_120azim, perm_135azim, perm_150azim]).T
-    #     permf = np.hstack([perm_noAzim_1, perm_noAzim_2, perm_noAzim_3, perm_noAzim_4,
-    #                        perm_noAzim_5, perm_noAzim_6, perm_noAzim_7, perm_noAzim_8]).T
-    #     permf_norm = MinMaxScaler((0, 2.80)).fit_transform(permf.T).T
-    #     permg_norm = MinMaxScaler((0, 2.90)).fit_transform(permg.T).T
-    #     facies = np.zeros((520,128*128*16))
-    #     for i in range(520):
-    #         facies[i] = np.load('data3D/facies/facies{}.npy'.format(i)).reshape(128*128*16)
-    #     perm_fluv = permf_norm * facies
-    #     poro_fluv = 10**((perm_fluv-7)/10)
-    #     k = np.expand_dims(perm_fluv.reshape(520,128,128,16), -1)
-    #     p = np.expand_dims(poro_fluv.reshape(520,128,128,16), -1)
-    #     hete_fluv = np.concatenate([k,p], -1)
-    #     return Nones
+    def load_xy(self, subsample=None):
+        x, y = np.load('X_data.npy'), np.load('y_data.npy')
+        if subsample == None:
+            self.X_data, self.y_data = x, y
+            if self.verbose:
+                print('X shape: {} | y shape: {}'.format(self.X_data.shape, self.y_data.shape))
+            if self.return_data:
+                return self.X_data, self.y_data
+        else:
+            idx = np.random.choice(range(self.n_realizations*2), subsample, replace=False)
+            self.X_data, self.y_data = x[idx], y[idx]
+            if self.verbose:
+                print('X shape: {} | y shape: {}'.format(self.X_data.shape, self.y_data.shape))
+            if self.return_data:
+                return self.X_data, self.y_data  
+        
+class L2normaliation(nn.Module):
+    def __init__(self, dim=1, eps=1e-12):
+        super(L2normaliation, self).__init__()
+        self.dim = dim
+        self.eps = eps
+    def fowrard(self, x):
+        return F.normalize(x, p=2, dim=self.dim, eps=self.eps)
     
 def double_convolution(in_channels, out_channels):
     conv_op = Sequential(
         Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-        BatchNorm2d(out_channels),
+        InstanceNorm2d(out_channels),
         ReLU(inplace=True),
         Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-        BatchNorm2d(out_channels),
+        InstanceNorm2d(out_channels),
         ReLU(inplace=True))
     return conv_op
 
 class h2_hete_rom(nn.Module):
     def __init__(self):
         super(h2_hete_rom, self).__init__()
-        
+        # Encoder
         self.max_pool2d = nn.MaxPool2d(kernel_size=2, stride=2)
         self.down_convolution_1 = double_convolution(4, 16)
         self.down_convolution_2 = double_convolution(16, 32)
         self.down_convolution_3 = double_convolution(32, 64)
         self.down_convolution_4 = double_convolution(64, 128)
         self.down_convolution_5 = double_convolution(128, 256)
-
+        # Decoder
         self.up_transpose_1   = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
         self.up_convolution_1 = double_convolution(256, 128)
         self.up_transpose_2   = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
@@ -239,10 +230,10 @@ class h2_hete_rom(nn.Module):
         self.up_convolution_3 = double_convolution(64, 32)
         self.up_transpose_4   = nn.ConvTranspose2d(32, 16, kernel_size=2,  stride=2)
         self.up_convolution_4 = double_convolution(32, 16)
-
         self.out = nn.Conv2d(16, 2, kernel_size=1) 
         
     def forward(self, x):
+        # Encode
         down_1 = self.down_convolution_1(x)
         down_2 = self.max_pool2d(down_1)
         down_3 = self.down_convolution_2(down_2)
@@ -252,7 +243,7 @@ class h2_hete_rom(nn.Module):
         down_7 = self.down_convolution_4(down_6)
         down_8 = self.max_pool2d(down_7)
         down_9 = self.down_convolution_5(down_8)        
-        
+        # Decode
         up_1 = self.up_transpose_1(down_9)
         x    = self.up_convolution_1(torch.cat([down_7, up_1], 1))
         up_2 = self.up_transpose_2(x)
@@ -261,6 +252,6 @@ class h2_hete_rom(nn.Module):
         x    = self.up_convolution_3(torch.cat([down_3, up_3], 1))
         up_4 = self.up_transpose_4(x)
         x    = self.up_convolution_4(torch.cat([down_1, up_4], 1))
-        out   = self.out(x)
+        out  = self.out(x)
         return out
     
