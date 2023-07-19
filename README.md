@@ -1,7 +1,9 @@
 # H2-Proxy
 proxy modeling for subsurface H2 storage
 
-
+256x256x1 SGEMS params: 
+(Max, Med, Min) = (100, 50, 25)
+(Nugget, Contrib) = (0.01, 0.3)
 
 <!-- 
 To-Do:
