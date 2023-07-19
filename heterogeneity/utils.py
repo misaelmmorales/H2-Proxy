@@ -21,10 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Sequential
-from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
-from torch.nn import Conv2d, ConvTranspose2d, MaxPool2d, BatchNorm2d, InstanceNorm2d
-from torch.optim import NAdam, Adam
-
+import torch.optim as optim
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 from torchvision.utils import save_image
@@ -206,12 +203,12 @@ class L2normaliation(nn.Module):
     
 def double_convolution(in_channels, out_channels):
     conv_op = Sequential(
-        Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-        InstanceNorm2d(out_channels),
-        ReLU(inplace=True),
-        Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-        InstanceNorm2d(out_channels),
-        ReLU(inplace=True))
+        nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+        nn.InstanceNorm2d(out_channels),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+        nn.InstanceNorm2d(out_channels),
+        nn.ReLU(inplace=True))
     return conv_op
 
 class Unet_rom(nn.Module):
@@ -273,26 +270,11 @@ class Generator(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
             nn.ReLU(inplace=True))
         # Latent Transformer
         self.latent_transformer = SwinTransformer(512, output_channels)
         # Decoder
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
@@ -333,8 +315,8 @@ class Discriminator(nn.Module):
 class CycleGAN(nn.Module):
     def __init__(self, input_channels_X, output_channels_Y, input_channels_Y, output_channels_X):
         super(CycleGAN, self).__init__()
-        self.generator_XY = Generator(input_channels_X, output_channels_Y)
-        self.generator_YX = Generator(input_channels_Y, output_channels_X)
+        self.generator_XY    = Generator(input_channels_X, output_channels_Y)
+        self.generator_YX    = Generator(input_channels_Y, output_channels_X)
         self.discriminator_X = Discriminator(input_channels_X)
         self.discriminator_Y = Discriminator(input_channels_Y)
     def forward(self, x, y):
@@ -345,16 +327,21 @@ class CycleGAN(nn.Module):
         return fake_Y, fake_X, reconstructed_X, reconstructed_Y
     
 class NumpyDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.from_numpy(X).float()
-        self.y = torch.from_numpy(y).float()
+    def __init__(self, folder_X, folder_y):
+        self.folder_X = folder_X
+        self.folder_y = folder_y
+        self.X_filenames = sorted(os.listdir(folder_X))
+        self.y_filenames = sorted(os.listdir(folder_y))
+        
     def __len__(self):
-        return len(self.X)
+        return len(self.X_filenames)
+    
     def __getitem__(self, index):
-        img_x = self.X[index]
-        img_y = self.y[index]        
-        return img_x, img_y
-     
+        X_path = os.path.join(self.folder_X, self.X_filenames[index])
+        y_path = os.path.join(self.folder_y, self.y_filenames[index])
+        X, y = np.load(X_path), np.load(y_path)
+        return X, y
+    
 class PatchMerging(nn.Module):
     def __init__(self, in_channels, out_channels, stride=2):
         super(PatchMerging, self).__init__()
@@ -411,18 +398,18 @@ class SwinTransformer(nn.Module):
         super(SwinTransformer, self).__init__()
         assert img_size % patch_size == 0, "Image size must be divisible by patch size"
         num_patches = (img_size // patch_size) ** 2
-        self.patch_embed = PatchEmbedding(in_channels, embed_dim)
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        self.patch_embed = PatchEmbedding(in_channels, embed_dim, img_size, patch_size)
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
         self.blocks = nn.ModuleList([
             SwinBlock(embed_dim, num_heads, mlp_ratio) for _ in range(sum(depths))
         ])
         self.norm = nn.LayerNorm(embed_dim)
         self.head = nn.Linear(embed_dim, out_channels)
+
     def forward(self, x):
         x = self.patch_embed(x)
         B, N, C = x.shape
-        x = x.flatten(2).transpose(1, 2)
-        x = torch.cat([self.pos_embed[:, :N], x], dim=1)
+        x = x + self.pos_embed
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
