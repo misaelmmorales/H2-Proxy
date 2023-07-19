@@ -213,8 +213,10 @@ class Heterogeneity:
 def double_convolution(in_channels, out_channels):
     conv_op = Sequential(
         Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+        BatchNorm2d(out_channels),
         ReLU(inplace=True),
         Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+        BatchNorm2d(out_channels),
         ReLU(inplace=True))
     return conv_op
 
