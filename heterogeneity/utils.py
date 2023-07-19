@@ -25,6 +25,7 @@ from torch.nn import Conv2d, ConvTranspose2d, MaxPool2d, BatchNorm2d, InstanceNo
 from torch.optim import NAdam, Adam
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 import torch.nn.functional as F
+from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 from torchsummary import summary
 from torchviz import make_dot
 import torchio as tio
@@ -255,3 +256,35 @@ class h2_hete_rom(nn.Module):
         out  = self.out(x)
         return out
     
+    # def load_perm_poro_3d(self):
+    #     perm_0azim   = pd.read_csv('data3D/perm_0azim.csv')
+    #     perm_30azim  = pd.read_csv('data3D/perm_30azim.csv')
+    #     perm_45azim  = pd.read_csv('data3D/perm_45azim.csv')
+    #     perm_60azim  = pd.read_csv('data3D/perm_60azim.csv')
+    #     perm_90azim  = pd.read_csv('data3D/perm_90azim.csv')
+    #     perm_120azim = pd.read_csv('data3D/perm_120azim.csv')
+    #     perm_135azim = pd.read_csv('data3D/perm_135azim.csv')
+    #     perm_150azim = pd.read_csv('data3D/perm_150azim.csv')
+    #     perm_noAzim_1 = pd.read_csv('data3D/perm_noazim_3d_1_65.csv')
+    #     perm_noAzim_2 = pd.read_csv('data3D/perm_noazim_3d_65_130.csv')
+    #     perm_noAzim_3 = pd.read_csv('data3D/perm_noazim_3d_130_195.csv')
+    #     perm_noAzim_4 = pd.read_csv('data3D/perm_noazim_3d_195_260.csv')
+    #     perm_noAzim_5 = pd.read_csv('data3D/perm_noazim_3d_260_325.csv')
+    #     perm_noAzim_6 = pd.read_csv('data3D/perm_noazim_3d_325_390.csv')
+    #     perm_noAzim_7 = pd.read_csv('data3D/perm_noazim_3d_390_455.csv')
+    #     perm_noAzim_8 = pd.read_csv('data3D/perm_noazim_3d_455_520.csv')
+    #     permg = np.hstack([perm_0azim, perm_30azim, perm_45azim, perm_60azim, 
+    #                        perm_90azim, perm_120azim, perm_135azim, perm_150azim]).T
+    #     permf = np.hstack([perm_noAzim_1, perm_noAzim_2, perm_noAzim_3, perm_noAzim_4,
+    #                        perm_noAzim_5, perm_noAzim_6, perm_noAzim_7, perm_noAzim_8]).T
+    #     permf_norm = MinMaxScaler((0, 2.80)).fit_transform(permf.T).T
+    #     permg_norm = MinMaxScaler((0, 2.90)).fit_transform(permg.T).T
+    #     facies = np.zeros((520,128*128*16))
+    #     for i in range(520):
+    #         facies[i] = np.load('data3D/facies/facies{}.npy'.format(i)).reshape(128*128*16)
+    #     perm_fluv = permf_norm * facies
+    #     poro_fluv = 10**((perm_fluv-7)/10)
+    #     k = np.expand_dims(perm_fluv.reshape(520,128,128,16), -1)
+    #     p = np.expand_dims(poro_fluv.reshape(520,128,128,16), -1)
+    #     hete_fluv = np.concatenate([k,p], -1)
+    #     return Nones
