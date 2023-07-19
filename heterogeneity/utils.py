@@ -22,8 +22,8 @@ import torch.nn as nn
 from torch.nn import Sequential
 from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
 from torch.nn import Conv2d, ConvTranspose2d, MaxPool2d, BatchNorm2d
-from torch.optim import NAdam
-from torch.utils.data import DataLoader
+from torch.optim import NAdam, Adam
+from torch.utils.data import Dataset, TensorDataset, DataLoader
 import torch.nn.functional as F
 from torchsummary import summary
 from torchviz import make_dot
