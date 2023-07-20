@@ -263,26 +263,26 @@ class Generator(nn.Module):
             nn.Conv2d(input_channels, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
+            nn.InstanceNorm2d(128),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
+            nn.InstanceNorm2d(256),
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(512),
+            nn.InstanceNorm2d(512),
             nn.ReLU(inplace=True))
         # Latent Transformer
         self.latent_transformer = SwinTransformer(512, output_channels)
         # Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
+            nn.InstanceNorm2d(256),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
+            nn.InstanceNorm2d(128),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(64),
+            nn.InstanceNorm2d(64),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(64, output_channels, kernel_size=4, stride=2, padding=1),
             nn.Tanh())
@@ -299,13 +299,13 @@ class Discriminator(nn.Module):
             nn.Conv2d(input_channels, 64, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
+            nn.InstanceNorm2d(128),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
+            nn.InstanceNorm2d(256),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(256, 512, kernel_size=4, stride=1, padding=1),
-            nn.BatchNorm2d(512),
+            nn.InstanceNorm2d(512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=1))
     def forward(self, x):
