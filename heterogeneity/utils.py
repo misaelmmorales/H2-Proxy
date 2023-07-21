@@ -167,7 +167,7 @@ class Heterogeneity:
             return self.fluvial_dataset, self.gaussian_dataset    
         
     def load_xy(self, subsample=None):
-        x, y = np.load('X_data.npy'), np.load('y_data.npy')
+        x, y = np.load('data2D/X_data.npy'), np.load('data2D/y_data.npy')
         if subsample == None:
             self.X_data, self.y_data = x, y
             if self.verbose:

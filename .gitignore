@@ -2038,3 +2038,5 @@ heterogeneity/X_data.npy
 heterogeneity/y_data.npy
 heterogeneity/y_temp.npy
 heterogeneity/X_temp.npy
+heterogeneity/data2D/X_data.npy
+heterogeneity/data2D/y_data.npy
