@@ -92,7 +92,7 @@ class SwinTransformerBlock(nn.Module):
         x = x + x
         x = self.norm2(x)
         return x
-    
+
 class SwinTransformer(nn.Module):
     def __init__(self, in_channels=4, output_channels=2, embedding_dim=256, patch_size=4, num_heads=8, num_layers=6, slope=0.2):
         super(SwinTransformer, self).__init__()

@@ -12,7 +12,7 @@ hete.check_torch_gpu()
 
 ################################################################
 nr = hete.n_realizations
-nt = hete.n_timesteps
+nt = 60
 ni = 64
 nx = 4
 ny = 2
@@ -23,7 +23,7 @@ lr         = 2e-4
 num_epochs = 100
 
 ################################################################
-X_data, y_data = hete.load_xy(5)
+X_data, y_data = hete.load_xy(200)
 print('X_data: {} | y_data: {}'.format(X_data.shape, y_data.shape))
 
 X_tr,    X_test,  y_tr,    y_test  = train_test_split(X_data, y_data, test_size=0.20)
@@ -79,6 +79,5 @@ for epoch in range(num_epochs):
     avg_val_loss = val_loss / len(valid_dataloader)
     print('Epoch: [{}/{}]: Loss={:.3f}, Val Loss={:.3f}'.format(epoch+1, num_epochs, avg_loss, avg_val_loss))
     
-loss_dict = {'loss':avg_loss, 'val_loss':avg_val_loss}
-pd.DataFrame(loss_dict).to_csv('metrics.csv')
+pd.DataFrame({'loss':avg_loss, 'val_loss':avg_val_loss}).to_csv('metrics.csv')
 torch.save(model.state_dict(), 'HeteTrans.pt')
