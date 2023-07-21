@@ -48,12 +48,16 @@ class NumpyDataset_from_array(Dataset):
         return img_x, img_y
     
 class CustomLoss(nn.Module):
-    def __init__(self, mse_weight=1.0, ssim_weight=1.0):
+    def __init__(self, mse_weight=1.0, ssim_weight=1.0, todevice=True):
         super(CustomLoss, self).__init__()
         self.mse_weight = mse_weight
         self.ssim_weight = ssim_weight
         self.mse_loss = nn.MSELoss()
-        self.ssim = SSIM()
+        if todevice:
+          device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+          self.ssim = SSIM().to(device)
+        else:
+          self.ssim = SSIM()
     def forward(self, pred, target):
         mse_loss = self.mse_loss(pred, target)
         ssim_loss = 1.0 - self.ssim(pred, target)

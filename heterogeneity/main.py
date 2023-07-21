@@ -12,7 +12,7 @@ hete.check_torch_gpu()
 
 ################################################################
 nr = hete.n_realizations
-nt = 60
+nt = 61
 ni = 64
 nx = 4
 ny = 2
