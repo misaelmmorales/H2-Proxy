@@ -1,0 +1,52 @@
+class ViTEncoder(nn.Module):
+    def __init__(self, input_channels=3, patch_size=16, hidden_size=256, num_heads=8, num_layers=4):
+        super(ViTEncoder, self).__init__()
+        self.patch_embedding = nn.Conv3d(input_channels, hidden_size, kernel_size=patch_size, stride=patch_size, padding=1)
+        self.patch_size = patch_size
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.num_layers = num_layers
+    def forward(self, x):
+        _, _, depth, height, width = x.size()
+        num_patches = (depth // self.patch_size) * (height // self.patch_size) * (width // self.patch_size)
+        positional_embedding = nn.Parameter(torch.randn(1, num_patches + 1, self.hidden_size))
+        cls_token = nn.Parameter(torch.randn(1, 1, self.hidden_size))
+        transformer = nn.Transformer(d_model=self.hidden_size, nhead=self.num_heads, num_encoder_layers=self.num_layers, batch_first=True)
+        x = self.patch_embedding(x)
+        x = x.flatten(2).transpose(1, 2)  # Flatten and transpose for transformer
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        pos_embedding = positional_embedding[:, :x.size(1) + 1, :]  # Adjust positional embedding size
+        x = torch.cat([cls_tokens, x], dim=1)  # Add cls token
+        x += pos_embedding  # Add positional embedding
+        tgt = torch.zeros_like(x)
+        x = transformer(x, tgt)
+        return x
+
+class ConvDecoder(nn.Module):
+    def __init__(self, hidden_size=256, decoder_channels=64, num_classes=2, output_size=(61, 64, 64)):
+        super(ConvDecoder, self).__init__()
+        self.output_size = output_size
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose3d(hidden_size, decoder_channels, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose3d(decoder_channels, num_classes, kernel_size=4, stride=2, padding=1),
+            nn.Tanh())
+        num_channels = decoder_channels * output_size[0] * output_size[1] * output_size[2]
+        self.fc = nn.Linear(hidden_size, num_channels)
+
+    def forward(self, x):
+        x = self.fc(x)
+        x = x.view(x.size(0), -1, *self.output_size)
+        x = self.decoder(x)
+        return x
+
+
+class ViTConvModel(nn.Module):
+    def __init__(self, input_channels=3, patch_size=16, hidden_size=256, num_heads=8, num_layers=4, decoder_channels=64, num_classes=2):
+        super(ViTConvModel, self).__init__()
+        self.encoder = ViTEncoder(input_channels=input_channels, patch_size=patch_size, hidden_size=hidden_size, num_heads=num_heads, num_layers=num_layers)
+        self.decoder = ConvDecoder(hidden_size=hidden_size, decoder_channels=decoder_channels, num_classes=num_classes)
+    def forward(self, x):
+        encoded_features = self.encoder(x)
+        decoded_output = self.decoder(encoded_features)
+        return decoded_output
