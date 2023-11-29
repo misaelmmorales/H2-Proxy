@@ -1,0 +1,48 @@
+(torchy) [foo]:/mnt/e/H2-Proxy/cushion$ python code.py 
+
+-------------------------------------------------
+------------------ VERSION INFO -----------------
+Torch version: 2.1.0+cu121
+Torch build with CUDA? True
+# Device(s) available: 1, Name(s): NVIDIA GeForce RTX 3080
+
+---------------- ORIGINAL DATA INFORMATION ---------------
+SA:  CH4: (10000, 18) | CO2: (10000, 18) | N2: (10000, 18) | NOCG: (10000, 18)
+DGR: CH4: (10000, 18) | CO2: (10000, 18) | N2: (10000, 18) | NOCG: (10000, 18)
+Processing column: efft
+Processing column: ymft
+Processing column: gwrt
+Processing column: injt
+
+---------------- PROCESSED DATA INFORMATION ---------------
+TRAIN: 46900 | VALIDATION: 10050 | TEST: 10050
+TRAIN: 0.700 | VALIDATION: 0.150 | TEST: 0.150
+
+----------------- MODEL TRAINING ----------------
+Epoch [0/200], Average Train Loss: 0.12641, Average Val Loss: 0.04235
+Epoch [10/200], Average Train Loss: 0.02460, Average Val Loss: 0.02321
+Epoch [20/200], Average Train Loss: 0.02296, Average Val Loss: 0.01702
+Epoch [30/200], Average Train Loss: 0.01972, Average Val Loss: 0.01548
+Epoch [40/200], Average Train Loss: 0.01782, Average Val Loss: 0.01469
+Epoch [50/200], Average Train Loss: 0.01741, Average Val Loss: 0.01259
+Epoch [60/200], Average Train Loss: 0.01633, Average Val Loss: 0.01739
+Epoch [70/200], Average Train Loss: 0.01519, Average Val Loss: 0.01402
+Epoch [80/200], Average Train Loss: 0.01576, Average Val Loss: 0.01210
+Epoch [90/200], Average Train Loss: 0.01468, Average Val Loss: 0.01052
+Epoch [100/200], Average Train Loss: 0.01434, Average Val Loss: 0.01064
+Epoch [110/200], Average Train Loss: 0.01319, Average Val Loss: 0.01102
+Epoch [120/200], Average Train Loss: 0.01285, Average Val Loss: 0.01103
+Epoch [130/200], Average Train Loss: 0.01277, Average Val Loss: 0.00952
+Epoch [140/200], Average Train Loss: 0.01256, Average Val Loss: 0.01059
+Epoch [150/200], Average Train Loss: 0.01317, Average Val Loss: 0.01059
+Epoch [160/200], Average Train Loss: 0.01210, Average Val Loss: 0.00950
+Epoch [170/200], Average Train Loss: 0.01255, Average Val Loss: 0.00929
+Epoch [180/200], Average Train Loss: 0.01189, Average Val Loss: 0.00896
+Epoch [190/200], Average Train Loss: 0.01174, Average Val Loss: 0.01094
+Training time: 197.50 seconds
+
+-------------- PERFORMANCE METRICS --------------
+E$_h$ TRAIN: R2=0.99104  | VALID: R2=0.98861  | TEST: R2=0.98847
+P$_h$ TRAIN: R2=0.99667  | VALID: R2=0.99526  | TEST: R2=0.99556
+GWR TRAIN: R2=0.99592  | VALID: R2=0.99466  | TEST: R2=0.99480
+J TRAIN: R2=0.99672  | VALID: R2=0.99649  | TEST: R2=0.99670

@@ -1,10 +1,10 @@
 ########################################################################################################################
-###################################################### IMPORT PACKAGES #################################################
-########################################################################################################################
+########################################################### START ######################################################
+
 import os
-import seaborn as sns
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import FuncFormatter
@@ -23,8 +23,9 @@ from matplotlib.ticker import ScalarFormatter
 
 class h2_cushion_rom(nn.Module):
     '''
-    H2 Cushion Gas proxy model: a torch dense nn to estimate [efft,ymft,gwrt] from various 
-    geologic and operational parameters.
+    H2 Cushion Gas proxy model: 
+        a torch dense nn to estimate [efft,ymft,gwrt,J] 
+        from various geologic and operational parameters.
     '''
     def __init__(self, in_features, out_features, hidden_sizes=[128,64,16]):   # 100,60,10
         super().__init__()                                                     # Calls the constructor of the superclass
@@ -55,7 +56,8 @@ class Custom_Loss(nn.Module):
 
 class Dual_Loss(nn.Module):
     '''
-    custom dual loss function with weighted average combination of (smooth) L1 and L2 metrics.
+    custom dual loss function with 
+    weighted average combination of (smooth) L1 and L2 metrics.
     '''
     def __init__(self):
         super(Dual_Loss, self).__init__()
@@ -106,12 +108,13 @@ class H2Toolkit:
         torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
         count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
         #py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
-        print('\n-------------------------------------------------')
-        print('------------------ VERSION INFO -----------------')
-        #print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
-        print('Torch version: {}'.format(torch_version))
-        print('Torch build with CUDA? {}'.format(cuda_avail))
-        print('# Device(s) available: {}, Name(s): {}'.format(count, name))
+        if self.verbose:
+            print('\n-------------------------------------------------')
+            print('------------------ VERSION INFO -----------------')
+            #print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
+            print('Torch version: {}'.format(torch_version))
+            print('Torch build with CUDA? {}'.format(cuda_avail))
+            print('# Device(s) available: {}, Name(s): {}'.format(count, name))
         self.device = torch.device('cuda' if cuda_avail else 'cpu')
         return None
 
@@ -273,6 +276,7 @@ class H2Toolkit:
             r2_train_seperate = r2_score(self.y_train_inv[:,i], self.y_train_pred_inv[:,i])
             r2_val_seperate   = r2_score(self.y_val_inv[:,i], self.y_val_pred_inv[:,i])
             r2_test_seperate  = r2_score(self.y_test_inv[:,i], self.y_test_pred_inv[:,i])      
+ 
             # Print
             print('{} TRAIN: R2={:.5f}  | VALID: R2={:.5f}  | TEST: R2={:.5f}'.format(name, r2_train_seperate, r2_val_seperate, r2_test_seperate))
   
@@ -398,7 +402,7 @@ class H2Toolkit:
             self.all_data = data_all
             
         if self.verbose:
-            print('---------------- ORIGINAL DATA INFORMATION ---------------')
+            print('\n---------------- ORIGINAL DATA INFORMATION ---------------')
             print('SA:  CH4: {} | CO2: {} | N2: {} | NOCG: {}'.format(data_sa_ch4.shape, data_sa_co2.shape, data_sa_n2.shape, data_sa_nocg.shape))
             print('DGR: CH4: {} | CO2: {} | N2: {} | NOCG: {}'.format(data_dgr_ch4.shape, data_dgr_co2.shape, data_dgr_n2.shape, data_dgr_nocg.shape))
             
@@ -408,8 +412,8 @@ class H2Toolkit:
 
     def process_data(self):
         '''
-        Process the data to: (1) shuffle, (2) truncate at large gwrt, (3) remove outliers, 
-        (4) log-transform gwrt, (5) min-max scale
+        Process the data to: 
+        (1) shuffle, (2) truncate at large gwrt, (3) remove outliers, (4) log-transform gwrt, (5) min-max scale
         '''
         data_shuffle = self.all_data.sample(frac=1)                            # Shuffle dataset
         data_trunc = data_shuffle[data_shuffle['gwrt']<self.gwrt_cutoff]       # Truncate at gwrt threshold
@@ -452,11 +456,11 @@ class H2Toolkit:
         iterations = np.arange(epochs)
         
         # Using a clear color palette, increased line widths, and different line styles for clarity
-        plt.plot(iterations, loss, '-', color='blue', lw=2.5, label='Training loss')  
-        plt.plot(iterations, val,  '-', color='darkorange', lw=2.5, label='Validation loss') 
+        plt.plot(iterations, loss, '-', color='blue', lw=2.5, label='train')  
+        plt.plot(iterations, val,  '-', color='darkorange', lw=2.5, label='validation') 
         
         # Title and axis labels with increased font size and a bit of padding for aesthetics
-        plt.title(title + 'Training and Validation Loss over Epochs', fontsize=22, pad=15)
+        plt.title(title + 'Training Performance', fontsize=22, pad=15)
         plt.xlabel('Epochs', fontsize=22, labelpad=10)
         plt.ylabel('Loss', fontsize=22, labelpad=10)
 
@@ -482,23 +486,15 @@ class H2Toolkit:
         if self.return_plot:
             plt.show()
 
-    
 ########################################################################################################################
 ############################################################ END #######################################################
 
-#from utils import *
 h2 = H2Toolkit()
 h2.check_torch_gpu()
- 
-########################## PROCESSING ##########################
 h2.read_data()
-h2.process_data() #h2.load_data()
-
-############################# ROM ##############################
+h2.process_data() # or h2.load_data()
 h2.train()
 h2.plot_loss()
-
-######################## PLOTS & METRICS ########################
 h2.evaluate()
 
 ################################################################
