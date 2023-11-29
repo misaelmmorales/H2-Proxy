@@ -13,6 +13,7 @@ from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
+from time import time
 
 import torch
 import torch.nn as nn
@@ -48,6 +49,9 @@ class h2_cushion_rom(nn.Module):
         return out
 
 class Custom_Loss(nn.Module):
+    '''
+    L1 (MAE) loss function.
+    '''
     def __init__(self):
         super(Custom_Loss, self).__init__()
     def forward(self, pred, true):
@@ -120,8 +124,11 @@ class H2Toolkit:
 
 
     def train(self):
+        def count_params(model):
+            return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
         # Model, Optimizer and Loss Function
-        self.model     = h2_cushion_rom(self.inp, self.out, hidden_sizes=[1024,516,256,128,64]).to(self.device)
+        self.model     = h2_cushion_rom(self.inp, self.out, hidden_sizes=[1024,512,256,128,64]).to(self.device)
         self.optimizer = Adam(self.model.parameters(), lr=2e-3)
         self.loss_fn   = Custom_Loss()
         
@@ -162,6 +169,7 @@ class H2Toolkit:
         best_val_loss = float('inf')  # Initialize with a high value
     
         print('\n----------------- MODEL TRAINING ----------------')
+        print('Number of trainable parameters: {:,}'.format(count_params(self.model)))
         # Training loop
         for epoch in range(self.epochs):
             train_loss_avg = self._train_one_epoch(train_loader)
