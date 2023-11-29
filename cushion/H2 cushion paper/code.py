@@ -56,18 +56,18 @@ class Custom_Loss(nn.Module):
         mae_loss = nn.L1Loss()(pred, true)  # L1 loss, which is MAE
         return mae_loss
 
-# class Custom_Loss(nn.Module):
-#     '''
-#     custom loss function with weighted average combination of (smooth) L1 and L2 metrics.
-#     '''
-#     def __init__(self):
-#         super(Custom_Loss, self).__init__()
-#         self.l2_weight = 0.1
-#     def forward(self, pred, true):
-#         l1_loss = nn.MSELoss()(pred, true)                                     # l2 loss
-#         l2_loss = nn.SmoothL1Loss()(pred, true)                                # l1 loss (smooth - Huber/L1)
-#         total_loss = (1-self.l2_weight)*l1_loss + self.l2_weight*l2_loss
-#         return total_loss
+class Dual_Loss(nn.Module):
+    '''
+    custom dual loss function with weighted average combination of (smooth) L1 and L2 metrics.
+    '''
+    def __init__(self):
+        super(Dual_Loss, self).__init__()
+        self.l2_weight = 0.1
+    def forward(self, pred, true):
+        l1_loss = nn.MSELoss()(pred, true)                                     # l2 loss
+        l2_loss = nn.SmoothL1Loss()(pred, true)                                # l1 loss (smooth - Huber/L1)
+        total_loss = (1-self.l2_weight)*l1_loss + self.l2_weight*l2_loss
+        return total_loss
 
 class CustomScalarFormatter(ScalarFormatter):
     def _set_format(self, vmin=None, vmax=None):
@@ -81,25 +81,25 @@ class H2Toolkit:
     (3) computing performance metrics and plotting results.
     '''
     def __init__(self):
-        self.return_data = False                                               # return data?
-        self.return_plot = False                                               # print plots?
-        self.save_data   = True                                                # save data?
-        self.verbose     = True                                                # print outputs?
-        self.inp         = 12                                                  # n features
-        self.out         = 4                                                   # n targets
-        self.xcols       = range(12)                                           # feature columns
-        self.ycols       = [12, 14, 15, 17]                                    # target columns
-        self.noise_flag  = False                                               # add noise?
-        self.noise       = [0, 0.05]                                           # added noise mean, std
-        self.gwrt_cutoff = 1e5                                                 # GWRT outlier threshold
-        self.std_outlier = 3                                                   # target outlier threshold
-        self.y_labels    = ['efft','ymft','gwrt','injt']                       # target names
-        self.test_size   = 0.15                                                # Test size
-        self.valid_size  = 0.17647                                             # Train-validation split size
-        self.epochs      = 200                                                 # training epochs
-        self.batch_size  = 512                                                 # batch size
-        self.delta_epoch = 10                                                  # print performance every n epochs
-        self.metrics = {'training_loss':[], 'validation_loss':[]}
+        self.return_data = False                                        # return data?
+        self.return_plot = True                                         # print plots?
+        self.save_data   = True                                         # save data?
+        self.verbose     = True                                         # print outputs?
+        self.inp         = 12                                           # n features
+        self.out         = 4                                            # n targets
+        self.xcols       = range(12)                                    # feature columns
+        self.ycols       = [12, 14, 15, 17]                             # target columns
+        self.noise_flag  = False                                        # add noise?
+        self.noise       = [0, 0.05]                                    # added noise mean, std
+        self.gwrt_cutoff = 1e5                                          # GWRT outlier threshold
+        self.std_outlier = 3                                            # target outlier threshold
+        self.y_labels    = ['efft','ymft','gwrt','injt']                # target names
+        self.test_size   = 0.15                                         # Test size
+        self.valid_size  = 0.17647                                      # Train-validation split size
+        self.epochs      = 200                                          # training epochs
+        self.batch_size  = 512                                          # batch size
+        self.delta_epoch = 10                                           # print performance every n epochs
+        self.metrics     = {'training_loss':[], 'validation_loss':[]}   # pre-load metrics dictionary
 
 
     def check_torch_gpu(self):
@@ -108,10 +108,10 @@ class H2Toolkit:
         '''
         torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
         count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
-        py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
+        #py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
         print('-------------------------------------------------')
         print('------------------ VERSION INFO -----------------')
-        print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
+        #print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
         print('Torch version: {}'.format(torch_version))
         print('Torch build with CUDA? {}'.format(cuda_avail))
         print('# Device(s) available: {}, Name(s): {}\n'.format(count, name))
@@ -211,7 +211,8 @@ class H2Toolkit:
 
     def evaluate(self):
         '''
-        Compute and print performance metrics: R^2, MSE, MAE. This is done for the overall dataset, as well as per-target basis.
+        Compute and print performance metrics: R^2, MSE, MAE. 
+        This is done for the overall dataset, as well as per-target basis.
         '''
         # Load the best model for final evaluations and predictions
         self.model.load_state_dict(torch.load('best_model.pt'))
