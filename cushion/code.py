@@ -2,26 +2,23 @@
 ###################################################### IMPORT PACKAGES #################################################
 ########################################################################################################################
 import os
-import sys
 import seaborn as sns
 import numpy as np
 import pandas as pd
-from matplotlib.colors import LogNorm
 import matplotlib.pyplot as plt
-from time import time
+from matplotlib.colors import LogNorm
 from matplotlib.ticker import FuncFormatter
 
 from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
 
 import torch
 import torch.nn as nn
-from torch.nn import Linear, ReLU, LeakyReLU, Dropout, BatchNorm1d
-from torch.optim import NAdam, Adam
+from torch.nn import Linear, LeakyReLU, BatchNorm1d
+from torch.optim import Adam
 from torch.utils.data import DataLoader, TensorDataset
-import torch.nn.functional as F
 from matplotlib.ticker import ScalarFormatter
 
 class h2_cushion_rom(nn.Module):
@@ -109,12 +106,12 @@ class H2Toolkit:
         torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
         count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
         #py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
-        print('-------------------------------------------------')
+        print('\n-------------------------------------------------')
         print('------------------ VERSION INFO -----------------')
         #print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
         print('Torch version: {}'.format(torch_version))
         print('Torch build with CUDA? {}'.format(cuda_avail))
-        print('# Device(s) available: {}, Name(s): {}\n'.format(count, name))
+        print('# Device(s) available: {}, Name(s): {}'.format(count, name))
         self.device = torch.device('cuda' if cuda_avail else 'cpu')
         return None
 
@@ -131,7 +128,7 @@ class H2Toolkit:
     
         if self.verbose:
             num_data = self.X_train.shape[0] + self.X_val.shape[0] + self.X_test.shape[0]
-            print('---------------- PROCESSED DATA INFORMATION ---------------')
+            print('\n---------------- PROCESSED DATA INFORMATION ---------------')
             print('TRAIN: {} | VALIDATION: {} | TEST: {}'.format(self.X_train.shape[0], self.X_val.shape[0], self.X_test.shape[0]))
             print('TRAIN: {:.3f} | VALIDATION: {:.3f} | TEST: {:.3f}'.format(self.X_train.shape[0]/num_data, self.X_val.shape[0]/num_data, self.X_test.shape[0]/num_data))
         
@@ -161,7 +158,7 @@ class H2Toolkit:
         # Initialize with a high value
         best_val_loss = float('inf')  # Initialize with a high value
     
-        print('----------------- MODEL TRAINING ----------------')
+        print('\n----------------- MODEL TRAINING ----------------')
         # Training loop
         for epoch in range(self.epochs):
             train_loss_avg = self._train_one_epoch(train_loader)
@@ -248,7 +245,7 @@ class H2Toolkit:
         self.y_val_pred_inv[:, 3]   = 10 ** self.y_val_pred_inv[:, 3]
         self.y_test_pred_inv[:, 3]  = 10 ** self.y_test_pred_inv[:, 3]
              
-        print('-------------- PERFORMANCE METRICS --------------')
+        print('\n-------------- PERFORMANCE METRICS --------------')
         # Compute metrics for each output seperately
         for i in range(len(self.ycols)):
             name = self.y_labels[i]
@@ -426,10 +423,10 @@ class H2Toolkit:
         X_data = self.data_clean.iloc[:, self.xcols]                           # Split (X,y)
         y_data = self.data_clean.iloc[:, self.ycols]
         
-        sns.distplot(y_data['efft']); plt.show()
-        sns.distplot(y_data['ymft']); plt.show()
-        sns.distplot(y_data['gwrt']); plt.show()
-        sns.distplot(y_data['injt']); plt.show()
+        sns.displot(y_data['efft']); plt.show()
+        sns.displot(y_data['ymft']); plt.show()
+        sns.displot(y_data['gwrt']); plt.show()
+        sns.displot(y_data['injt']); plt.show()
         
         y_data_log = y_data.copy()
         y_data_log['gwrt'] = np.log10(y_data['gwrt'])                          # Log-transform gwrt
