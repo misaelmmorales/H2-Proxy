@@ -1,0 +1,35 @@
+dataset_path = 'Fdataset/'
+file_list = [f for f in os.listdir(dataset_path) if f.endswith('.npz')]
+
+np.random.shuffle(file_list)
+train_files = file_list[:700]
+valid_files = file_list[700:850]
+test_files  = file_list[850:]
+time_data   = np.arange(1,61)
+
+def load_data(file_path):
+    data = np.load(os.path.join(dataset_path, file_path))
+    x_data = np.repeat(np.expand_dims(np.stack([data['poro'], data['perm']], axis=-1), 0), 60, 0)
+    y_data = np.stack([data['pres'], data['sat']], axis=-1)
+    return ((x_data, time_data), y_data)
+
+def load_data_wrapper(file_path):
+    return tf.numpy_function(load_data, [file_path], (tf.float32, tf.float32))
+
+def preprocess(poro_perm_data, pres_sat_data):
+    # Add any preprocessing steps here
+    return poro_perm_data, pres_sat_data
+
+def prepare_dataloader(loader_type:str, batch_size:int=BATCH_SIZE):
+    if loader_type=='train':
+        dataset = tf.data.Dataset.from_tensor_slices(train_files)
+    elif loader_type=='valid':
+        dataset = tf.data.Dataset.from_tensor_slices(valid_files)
+    elif loader_type=='test':
+        dataset = tf.data.Dataset.from_tensor_slices(test_files)
+    dataloader = dataset.map(load_data_wrapper, num_parallel_calls=tf.data.AUTOTUNE).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    return dataloader
+
+trainloader = prepare_dataloader('train')
+validloader = prepare_dataloader('valid')
+testloader  = prepare_dataloader('test')
