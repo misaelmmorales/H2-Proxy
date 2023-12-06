@@ -1,0 +1,103 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+from scipy.io import loadmat
+
+import torch
+import torch.nn as nn
+
+def check_torch_gpu():
+    torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
+    count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
+    #py_version, conda_env_name = sys.version, sys.executable.split('\\')[-2]
+    print('\n-----------------------------------------------------------')
+    print('----------------------- VERSION INFO ----------------------')
+    #print('Conda Environment: {} | Python version: {}'.format(conda_env_name, py_version))
+    print('Torch version: {}'.format(torch_version))
+    print('Torch build with CUDA? {}'.format(cuda_avail))
+    print('# Device(s) available: {}, Name(s): {}'.format(count, name))
+    device = torch.device('cuda' if cuda_avail else 'cpu')
+    return device
+device = check_torch_gpu()
+
+BATCH_SIZE     = 32
+INPUT_SHAPE    = (2,256,256)
+IMAGE_SIZE     = 256
+
+
+PATCH_SIZE     = (4,4,4)
+NUM_PATCHES    = (IMAGE_SIZE // PATCH_SIZE[0]) **2
+LAYER_NORM_EPS = 1e-6
+PROJECTION_DIM = 128
+NUM_HEADS      = 16
+NUM_LAYERS     = 8
+
+EPOCHS         = 50
+LEARNING_RATE  = 1e-4
+WEIGHT_DECAY   = 1e-5
+
+class TubeletEmbedding(nn.Module):
+    def __init__(self, embed_dim, patch_size):
+        super(TubeletEmbedding, self).__init__()
+        self.projection = nn.Conv3d(in_channels=1, out_channels=embed_dim, kernel_size=patch_size, stride=patch_size, padding=0)
+        self.flatten    = nn.Flatten()
+
+    def forward(self, videos):
+        projected_patches = self.projection(videos)
+        flattened_patches = self.flatten(projected_patches)
+        return flattened_patches
+    
+class PositionalEncoder(nn.Module):
+    def __init__(self, embed_dim):
+        super(PositionalEncoder, self).__init__()
+        self.embed_dim = embed_dim
+
+    def forward(self, encoded_tokens):
+        _, num_tokens, _   = encoded_tokens.size()
+        positions          = torch.arange(0, num_tokens).unsqueeze(0).to(encoded_tokens.device)
+        position_embedding = nn.Embedding(num_embeddings=num_tokens, embedding_dim=self.embed_dim)(positions)
+        encoded_positions  = position_embedding.unsqueeze(0)
+        encoded_tokens     = encoded_tokens + encoded_positions
+        return encoded_tokens
+
+def create_vivit_model(tubelet_embedder=TubeletEmbedding(embed_dim=PROJECTION_DIM, patch_size=PATCH_SIZE), 
+                       positional_encoder=PositionalEncoder(embed_dim=PROJECTION_DIM), 
+                       input_shape=INPUT_SHAPE, transformer_layers=NUM_LAYERS, num_heads=NUM_HEADS, embed_dim=PROJECTION_DIM, 
+                       layer_norm_eps=LAYER_NORM_EPS, attn_dropout=0.1, st_dropout=0.1):
+
+    def decoder_layer(inp, filters, kernel_size=3, pad='same'):
+        x = nn.Conv2d(inp, filters, kernel_size=kernel_size, padding=pad)
+        x = nn.LayerNorm(x.size()[1:])(x)
+        x = nn.PReLU()(x)
+        x = nn.ConvTranspose2d(filters, kernel_size=kernel_size, padding=pad, stride=2)(x)
+        x = nn.Dropout2d(st_dropout)(x)
+        return x
+
+    model_inputs = torch.zeros(input_shape)
+    inputs = model_inputs.unsqueeze(1)
+    patches = tubelet_embedder(inputs)
+    encoded_patches = positional_encoder(patches)
+
+    for _ in range(transformer_layers):
+        x1 = nn.LayerNorm(encoded_patches.size()[1:])(encoded_patches)
+        attention_output = nn.MultiheadAttention(embed_dim, num_heads, dropout=attn_dropout)(x1, x1, x1)
+        x2 = attention_output + encoded_patches
+        x3 = nn.LayerNorm(x2.size()[1:])(x2)
+        x3 = nn.Sequential(nn.Linear(embed_dim, embed_dim*4), nn.GELU(), nn.Linear(embed_dim*4, embed_dim))(x3)
+        encoded_patches = x3 + x2
+
+    time_input = torch.ones(encoded_patches.size()[1:])
+    time_input = time_input.unsqueeze(0)
+    latent = torch.cat([encoded_patches, time_input], dim=-1)
+
+    latent_shape = (IMAGE_SIZE//PATCH_SIZE[0], IMAGE_SIZE//PATCH_SIZE[0], latent.size()[-1])
+    _ = latent.view(latent_shape)
+    _ = decoder_layer(_, 16)
+    _ = decoder_layer(_, 4)
+
+    outputs = nn.Conv2d(4, 2, kernel_size=3, padding='same')
+    model = nn.Sequential(inputs, outputs)
+    return model
+
+model = create_vivit_model()
