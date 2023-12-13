@@ -18,7 +18,7 @@ class Heterogeneity():
     def __init__(self):
         self.device       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.verbose      = True        # print progress
-        self.folder       = 'Fdataset'  # dataset directory
+        self.folder       = 'Fdataset'  # dataset directory (F=fluvial, G=gaussian)
         self.lr           = 1e-3        # learning rate
         self.weight_decay = 1e-5        # weight decay for learning rate
         self.mse_weight   = 1.0         # Combined loss MSE weight
@@ -78,7 +78,7 @@ class Heterogeneity():
         print('-'*60+'\n'+'Total number of trainable parameters: {:,}'.format(self.count_params(self.model)))
         train_loss, valid_loss, train_ssim, valid_ssim = [], [], [], [] # instanstiate empty lists for metrics
         best_val_loss, best_model = float('inf'), None                  # instantiate best model variables
-        time0 = time.time()                                         # start overall timer
+        time0 = time.time()                                             # start overall timer
         for epoch in range(self.num_epochs):
             start_time = time.time()                                # start epoch timer
             # Training
