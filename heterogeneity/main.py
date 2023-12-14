@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset, random_split
-import torchvision.transforms as transforms
+from torchvision.transforms import v2 as TVTransform
 from torchvision.ops import SqueezeExcitation
 from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
@@ -18,6 +18,7 @@ class Heterogeneity():
     def __init__(self):
         self.device       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.verbose      = True        # print progress
+        self.return_data  = False       # return data
         self.folder       = 'Fdataset'  # dataset directory (F=fluvial, G=gaussian)
         self.lr           = 1e-3        # learning rate
         self.weight_decay = 1e-5        # weight decay for learning rate
@@ -26,7 +27,8 @@ class Heterogeneity():
         self.train_perc   = 0.75        # training set split percentage (of total)
         self.valid_perc   = 0.10        # validation set split percentage (of total)
         self.batch_size   = 32          # batch size
-        self.num_epochs   = 100         # number of epochs
+        self.num_epochs   = 2           # number of epochs
+        self.check_torch_gpu()          # check if torch is built with GPU support
 
     def check_torch_gpu(self):
         '''
@@ -34,12 +36,12 @@ class Heterogeneity():
         '''
         torch_version, cuda_avail = torch.__version__, torch.cuda.is_available()
         count, name = torch.cuda.device_count(), torch.cuda.get_device_name()
-        print('\n'+'-'*60)
-        print('----------------------- VERSION INFO -----------------------')
-        print('Torch version: {}'.format(torch_version))
-        print('Torch build with CUDA? {}'.format(cuda_avail))
-        print('# Device(s) available: {}, Name(s): {}'.format(count, name))
-        print('-'*60+'\n')
+        if self.verbose:
+            print('\n'+'-'*60)
+            print('----------------------- VERSION INFO -----------------------')
+            print('Torch version: {} | Torch Built with CUDA? {}'.format(torch_version, cuda_avail))
+            print('# Device(s) available: {}, Name(s): {}'.format(count, name))
+            print('-'*60+'\n')
         self.device = torch.device('cuda' if cuda_avail else 'cpu')
         return None
         
@@ -51,23 +53,36 @@ class Heterogeneity():
         '''
         Make the Train/Valid/Test dataloaders from custom Dataset and DataLoader classes
         '''
+        print('-'*60+'\n'+'-------------- DATA LOADING AND PREPROCESSING --------------') if self.verbose else None
         file_names = os.listdir(self.folder)                    # list all files in directory
-        file_paths = [os.path.join(self.folder, file_name) for file_name in file_names] # generate fullfile paths
-        dataset    = MyDataset(file_paths)                      # create custom Dataset
+        file_paths = [os.path.join(self.folder, file_name) for file_name in file_names]
+        transform  = TVTransform.Compose([                      # define image transformations
+            TVTransform.ToImage(),                              # convert to PIL image
+            TVTransform.ToDtype(torch.float32),                 # convert to float32
+            TVTransform.Resize(size=(128,128), antialias=True), # resize to 128x128
+            TVTransform.Normalize(mean=[0], std=[1]),           # normalize by mean and std
+            TVTransform.RandomHorizontalFlip(),                 # random horizontal flip
+            TVTransform.RandomVerticalFlip()                    # random vertical flip
+            ])
+        dataset    = MyDataset(file_paths, transform)           # create custom Dataset
         train_size = int(self.train_perc * len(dataset))        # define training set size
         valid_size = int(self.valid_perc * len(dataset))        # define validation set size
         test_size  = len(dataset) - (train_size + valid_size)   # define testing set size
-        train_dataset, valid_dataset, test_dataset = random_split(dataset, [train_size, valid_size, test_size]) # random split
-        self.train_dataloader = MyDataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,  mode='train')
+        if self.verbose:
+            print('Total: {} - Training: {} | Validation: {} | Testing: {}'.format(len(dataset), train_size, valid_size, test_size))
+        train_dataset, valid_dataset, test_dataset = random_split(dataset, [train_size, valid_size, test_size])
+        self.train_dataloader = MyDataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,          mode='train')
         self.valid_dataloader = MyDataLoader(valid_dataset, batch_size=self.batch_size, shuffle=shuffle_valid, mode='valid')
         self.test_dataloader  = MyDataLoader(test_dataset,  batch_size=self.batch_size, shuffle=shuffle_test,  mode='test')
-        if self.verbose:
+        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60)  if self.verbose else None
+        if self.return_data:
             return self.train_dataloader, self.valid_dataloader, self.test_dataloader
 
     def trainer(self, optimizer=None, criterion=None):
         '''
         Subroutine for training the model
         '''
+        print('-'*60+'\n'+'---------------------- MODEL TRAINING ----------------------') if self.verbose else None
         self.model = PixFormer().to(self.device) # instantiate model to device
         if optimizer is None:
             # AdamW optimizer with weight decay
@@ -75,7 +90,8 @@ class Heterogeneity():
         if criterion is None:
             # Custom loss function: L = a*MSE + b*(1-SSIM)
             criterion = CustomLoss(mse_weight=self.mse_weight, ssim_weight=self.ssim_weight).to(self.device)
-        print('-'*60+'\n'+'Total number of trainable parameters: {:,}'.format(self.count_params(self.model)))
+        if self.verbose:
+            print('Total number of trainable parameters: {:,}'.format(self.count_params(self.model)))
         train_loss, valid_loss, train_ssim, valid_ssim = [], [], [], [] # instanstiate empty lists for metrics
         best_val_loss, best_model = float('inf'), None                  # instantiate best model variables
         time0 = time.time()                                             # start overall timer
@@ -112,10 +128,97 @@ class Heterogeneity():
                 best_val_loss = valid_loss[-1]                      # update best validation loss
                 best_model = self.model.state_dict()                # update best model
             end_time = time.time() - start_time                     # end epoch timer
-            print('Epoch: {}/{} | Train loss: {:.4f} | Val loss: {:.4f} | Train SSIM: {:.4f} | Val SSIM: {:.4f} | Time elapsed: {:.2f} sec'.format(epoch+1, epochs, train_loss[-1], val_loss[-1], train_ssim[-1], val_ssim[-1], end_time))
-        print('-'*60+'\n','Total training time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n')
-        return self.model, best_model, train_loss, valid_loss, train_ssim, valid_ssim
+            if self.verbose:
+                print('Epoch: {}/{} | Train loss: {:.4f} | Val loss: {:.4f} | Train SSIM: {:.4f} | Val SSIM: {:.4f} | Time elapsed: {:.2f} sec'.format(epoch+1, self.num_epochs, train_loss[-1], epoch_loss[-1], train_ssim[-1], epoch_ssim[-1], end_time))
+        print('-'*60+'\n','Total training time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
+        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60) if self.verbose else None
+        self.losses = [train_loss, valid_loss, train_ssim, valid_ssim]
+        if self.return_data:
+            return self.model, best_model, self.losses
 
+class MyDataset(Dataset):
+    '''
+    Generate a custom dataset from .npz files
+    (x) porosity, permeability, timesteps
+    (y) pressure, saturation
+    '''
+    def __init__(self, file_paths, transform=None, norm:str='MinMax'):
+        self.file_paths = file_paths
+        self.transform  = transform
+        self.tsteps     = 60
+        self.x_channels = 3
+        self.y_channels = 2
+        self.orig_img   = 256
+        self.half_img   = 128
+        self.norm       = lambda x: self.normalize(x, norm)
+
+    def normalize(self, x, norm):
+        x_norm = np.zeros_like(x)
+        error_msg = 'Invalid normalization scheme: {} | Select ["None", "MinMax", "ExtMinMax", "Standard"]'.format(norm)
+        for i in range(x.shape[1]):
+            if norm == 'MinMax':
+                x_norm[:,i] = (x[:,i] - x[:,i].min()) / (x[:,i].max() - x[:,i].min())
+            elif norm == 'Standard':
+                x_norm[:,i] = (x[:,i] - x[:,i].mean()) / (x[:,i].std())
+            elif norm == 'ExtMinMax':
+                x_norm[:,i] = (x[:,i] - x[:,i].min()) / (x[:,i].max() - x[:,i].min()) * 2 - 1
+            elif norm == 'None':
+                x_norm = x
+            else:
+                raise ValueError(error_msg)
+        return x_norm
+
+    def __len__(self):
+        return len(self.file_paths)
+    
+    def __getitem__(self, idx):
+        data   = np.load(self.file_paths[idx])
+        poro   = np.tile(data['poro'], (self.tsteps, 1, 1, 1))
+        perm   = np.tile(np.log10(data['perm']), (self.tsteps, 1, 1, 1))
+        tstep  = np.tile(np.arange(1, self.tsteps+1).reshape(self.tsteps, 1, 1, 1), (1, 1, self.orig_img, self.orig_img))
+        pres   = np.expand_dims(data['pres'], 1)
+        sat    = np.expand_dims(data['sat'], 1)
+        X_data = np.concatenate([poro, perm, tstep], axis=1).reshape(-1, self.x_channels, self.orig_img, self.orig_img)
+        y_data = np.concatenate([pres, sat], axis=1).reshape(-1, self.y_channels, self.orig_img, self.orig_img)
+        if self.transform:
+            X_data_t = np.zeros((len(X_data), self.x_channels, self.half_img, self.half_img))
+            y_data_t = np.zeros((len(y_data), self.y_channels, self.half_img, self.half_img))
+            for i in range(len(X_data)):
+                X_data_t[i] = self.transform(X_data[i].T)
+                y_data_t[i] = self.transform(y_data[i].T)
+            X_data, y_data = X_data_t, y_data_t
+        x, y = torch.Tensor(self.norm(X_data)), torch.Tensor(self.norm(y_data))
+        return x, y
+    
+class MyDataLoader(DataLoader):
+    '''
+    Generate a custom dataloader for dataset
+    (train): x,y at timesteps 0-40
+    (valid): x,y at timesteps 40-50
+    (test):  x,y at timesteps 50-60
+    '''
+    def __init__(self, *args, mode:str=None, **kwargs):
+        super(MyDataLoader, self).__init__(*args, **kwargs)
+        self.mode = mode
+    def __iter__(self):
+        for batch in super(MyDataLoader, self).__iter__():
+            X_data, y_data = batch          # loads a batch of data with shate (b, t, c, h, w)
+            if self.mode == 'train':        # _____TRAINING_____
+                X_data = X_data[:, :40]     # x at timesteps 0-40
+                y_data = y_data[:, :40]     # y at timesteps 0-40
+            elif self.mode == 'valid':      # _____VALIDATION_____
+                X_data = X_data[:, 40:50]   # x at timesteps 40-50
+                y_data = y_data[:, 40:50]   # y at timesteps 40-50
+            elif self.mode == 'test':       # ______TESTING______
+                X_data = X_data[:, 50:]     # x at timesteps 50-60
+                y_data = y_data[:, 50:]     # y at timesteps 50-60
+            else:
+                raise ValueError('Invalid mode: {} | select between "train", "valid" or "test"'.format(self.mode))
+            X_data = X_data.reshape(-1, X_data.size(2), X_data.size(3), X_data.size(4)) # reshape to (b*t, c, h, w)
+            y_data = y_data.reshape(-1, y_data.size(2), y_data.size(3), y_data.size(4)) # reshape to (b*t, c, h, w)
+            yield X_data, y_data
+
+################################### MODEL CLASSES ###################################
 class CustomLoss(nn.Module):
     '''
     Define custom loss function: L = a*MSE + b*(1-SSIM)
@@ -151,7 +254,7 @@ class PositionalEncoding(nn.Module):
     '''
     Get the positional codes for each patch of the input image
     '''
-    def __init__(self, embed_dim, max_seq_len=512):
+    def __init__(self, embed_dim, max_seq_len=256):
         super(PositionalEncoding, self).__init__()
         position = torch.arange(0, max_seq_len).unsqueeze(1).float()   # get position indices
         div_term = torch.exp(torch.arange(0, embed_dim, 2).float() * -(math.log(10000.0) / embed_dim))
@@ -160,7 +263,8 @@ class PositionalEncoding(nn.Module):
         pos_enc[0, :, 1::2] = torch.cos(position * div_term)           # compute positional encoding cosine
         self.register_buffer('pos_enc', pos_enc)                       # register buffer for positional encoding
     def forward(self, x):
-        return x + self.pos_enc[:, :x.size(1)].detach()                # add positional encoding to patches
+        x = x + self.pos_enc[:, :x.size(1)].detach()                   # add positional encoding to patches
+        return x
     
 class MultiHeadAttention(nn.Module):
     '''
@@ -199,12 +303,12 @@ class MLPBlock(nn.Module):
         x = F.gelu(self.fc1(x))   # activate outputs
         x = self.fc2(x)           # compute outputs
         return x
-    
+
 class TransformerEncoderBlock(nn.Module):
     '''
     Single ViT block with attention
     '''
-    def __init__(self, embed_dim, num_heads, mlp_hidden_dim=1024):
+    def __init__(self, embed_dim, num_heads, mlp_hidden_dim=512):
         super(TransformerEncoderBlock, self).__init__()
         self.self_attention = MultiHeadAttention(embed_dim, num_heads)   # Attention mechanism
         self.mlp_block = MLPBlock(embed_dim, mlp_hidden_dim)             # MLP block
@@ -223,7 +327,7 @@ class ViTencoder(nn.Module):
     '''
     Single ViT block with patch embedding and positional encoding
     '''
-    def __init__(self, image_size=256, latent_size=32, in_channels=3, patch_size=16, projection_dim=256, embed_dim=1024, num_heads=16, num_layers=8):
+    def __init__(self, image_size=128, latent_size=16, in_channels=3, patch_size=8, projection_dim=128, embed_dim=512, num_heads=8, num_layers=4):
         super(ViTencoder, self).__init__()
         self.patch_embedding     = PatchEmbedding(image_size, patch_size, in_channels, embed_dim)   # patch embedding
         self.positional_encoding = PositionalEncoding(embed_dim)                                    # positional encoding
@@ -245,23 +349,24 @@ class MultiScaleResidual(nn.Module):
     '''
     Multiscale Residual concatenation block
     '''
-    def __init__(self, image_size=256):
+    def __init__(self, image_size=128):
         super(MultiScaleResidual, self).__init__()
         self.image_size = image_size                                     # original image size
     def forward(self, x):
         _, _, h, w = x.shape                                             # get image dimensions
         scale = [self.image_size//h, self.image_size//w]                 # get scale factors
         size  = (self.image_size//scale[0], self.image_size//scale[1])   # get upscaled image size
-        x_ups = transforms.Resize(size, antialias=True)(x)               # resize original image to upscaled size
-        return torch.cat([x, x_ups], dim=1)                              # concatenate image and upscale image
-    
+        x_ups = TVTransform.Resize(size, antialias=True)(x)              # resize original image to upscaled size
+        x = torch.cat([x, x_ups], dim=1)                                 # concatenate image and upscale image
+        return x
+
 class PixFormer(nn.Module):
     '''
     PixFormer model: 
     (1) Vision Transformer encoder
     (2) Multiscale Residual Spatiotemporal decoder
     '''
-    def __init__(self, projection_dim=128, latent_size=32):
+    def __init__(self, projection_dim=128, latent_size=16):
         super(PixFormer, self).__init__()
         self.projection_dim = projection_dim
         self.latent_size    = latent_size
@@ -281,68 +386,20 @@ class PixFormer(nn.Module):
             MultiScaleResidual(),                                                # Multi-scale residual concatenation
             nn.Upsample(scale_factor=2),                                         # Upsample by 2x
             nn.Conv2d(out_channels*2, out_channels, kernel_size=3, padding=1))   # convolve concatenated features
+    
     def forward(self, x):
         x = self.encoder(x)                                                       # encode inputs: z = Enc(x)
         x = x.view(-1, self.projection_dim, self.latent_size, self.latent_size)   # reshape z: vector -> feature maps
         for layer in self.layers:
             x = layer(x)                                                          # decode inputs: y = Dec(z)
         x_output = self.out(x)                                                    # output layer
-        return x_output
-    
-class MyDataset(Dataset):
-    '''
-    Generate a custom dataset from .npz files
-    (x) porosity, permeability, timesteps
-    (y) pressure, saturation
-    '''
-    def __init__(self, file_paths):
-        self.file_paths = file_paths
-    def __len__(self):
-        return len(self.file_paths)
-    def __getitem__(self, idx):
-        data = np.load(self.file_paths[idx])                                              # load .npz file in file_paths
-        poro = np.tile(data['poro'], (60, 1, 1, 1))                                       # reshape porosity channel
-        perm = np.tile(data['perm'], (60, 1, 1, 1))                                       # reshape permeability channel
-        timesteps = np.tile(np.arange(1, 61).reshape(60, 1, 1, 1), (1, 1, 256, 256))      # construct time channel
-        pres = data['pres'].reshape(60, 1, 256, 256)                                      # reshape pressure channel
-        sat = data['sat'].reshape(60, 1, 256, 256)                                        # reshape saturation channel
-        X_data = np.concatenate([poro, perm, timesteps], axis=1).reshape(-1, 3, 256, 256) # Inputs  (X)
-        y_data = np.concatenate([pres, sat], axis=1).reshape(-1, 2, 256, 256)             # Outputs (y)
-        return torch.Tensor(X_data), torch.Tensor(y_data)                                 # Tensorize data
+        return x_output    
 
-class MyDataLoader(DataLoader):
-    '''
-    Generate a custom dataloader for dataset
-    (train): x,y at timesteps 0-40
-    (valid): x,y at timesteps 40-50
-    (test):  x,y at timesteps 50-60
-    '''
-    def __init__(self, *args, mode:str=None, **kwargs):
-        super(MyDataLoader, self).__init__(*args, **kwargs)
-        self.mode = mode
-    def __iter__(self):
-        for batch in super(MyDataLoader, self).__iter__():
-            X_data, y_data = batch          # loads a batch of data with shate (b, t, c, h, w)
-            if self.mode == 'train':        # _____TRAINING_____
-                X_data = X_data[:, :40]     # x at timesteps 0-40
-                y_data = y_data[:, :40]     # y at timesteps 0-40
-            elif self.mode == 'valid':      # _____VALIDATION_____
-                X_data = X_data[:, 40:50]   # x at timesteps 40-50
-                y_data = y_data[:, 40:50]   # y at timesteps 40-50
-            elif self.mode == 'test':       # ______TESTING______
-                X_data = X_data[:, 50:]     # x at timesteps 50-60
-                y_data = y_data[:, 50:]     # y at timesteps 50-60
-            else:
-                raise ValueError('Invalid mode: {} | select between "train", "valid" or "test"'.format(self.mode))
-            X_data = X_data.reshape(-1, X_data.size(2), X_data.size(3), X_data.size(4)) # reshape to (b*t, c, h, w)
-            y_data = y_data.reshape(-1, y_data.size(2), y_data.size(3), y_data.size(4)) # reshape to (b*t, c, h, w)
-            yield X_data, y_data
 
 ############################## MAIN ##############################
 if __name__ == '__main__': 
-    # run main routine if main.py called directly
+    # Run main routine if main.py called directly
     hete = Heterogeneity()
-    hete.check_torch_gpu()
     hete.make_dataloaders()
     hete.trainer()
 
