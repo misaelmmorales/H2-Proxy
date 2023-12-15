@@ -27,7 +27,7 @@ class Heterogeneity():
         self.train_perc   = 0.75        # training set split percentage (of total)
         self.valid_perc   = 0.10        # validation set split percentage (of total)
         self.batch_size   = 32          # batch size
-        self.num_epochs   = 2           # number of epochs
+        self.num_epochs   = 100         # number of epochs
         self.check_torch_gpu()          # check if torch is built with GPU support
 
     def check_torch_gpu(self):
@@ -133,6 +133,7 @@ class Heterogeneity():
         print('-'*60+'\n','Total training time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
         print(' '*24+'... done ...'+' '*24+'\n'+'-'*60) if self.verbose else None
         self.losses = [train_loss, valid_loss, train_ssim, valid_ssim]
+        torch.save(self.model, 'PixFormer_model.pt')
         if self.return_data:
             return self.model, best_model, self.losses
 

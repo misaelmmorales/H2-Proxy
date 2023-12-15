@@ -1,25 +1,4 @@
 #!/bin/bash
-#----------------------------------------------------
-# Sample Slurm job script
-#   for TACC Frontera CLX nodes
-#
-#   *** Serial Job in Small Queue***
-# 
-# Last revised: 22 June 2021
-#
-# Notes:
-#
-#  -- Copy/edit this script as desired.  Launch by executing
-#     "sbatch clx.serial.slurm" on a Frontera login node.
-#
-#  -- Serial codes run on a single node (upper case N = 1).
-#       A serial code ignores the value of lower case n,
-#       but slurm needs a plausible value to schedule the job.
-#
-#  -- Use TACC's launcher utility to run multiple serial 
-#       executables at the same time, execute "module load launcher" 
-#       followed by "module help launcher".
-#----------------------------------------------------
 
 #SBATCH -J H2proxy         # Job name
 #SBATCH -o h2proxy.o%j     # Name of stdout output file
