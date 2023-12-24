@@ -54,20 +54,20 @@ class Heterogeneity():
         Make the Train/Valid/Test dataloaders from custom Dataset and DataLoader classes
         '''
         print('-'*60+'\n'+'-------------- DATA LOADING AND PREPROCESSING --------------') if self.verbose else None
-        file_names = os.listdir(self.folder)                    # list all files in directory
+        file_names = os.listdir(self.folder)                              # list all files in directory
         file_paths = [os.path.join(self.folder, file_name) for file_name in file_names]
-        transform  = TVTransform.Compose([                      # define image transformations
-            TVTransform.ToImage(),                              # convert to PIL image
-            TVTransform.ToDtype(torch.float32),                 # convert to float32
-            TVTransform.Resize(size=(128,128), antialias=True), # resize to 128x128
-            TVTransform.Normalize(mean=[0], std=[1]),           # normalize by mean and std
-            TVTransform.RandomHorizontalFlip(),                 # random horizontal flip
-            TVTransform.RandomVerticalFlip()                    # random vertical flip
+        transform  = TVTransform.Compose([                                # define image transformations
+            TVTransform.ToImage(),                                        # convert to PIL image
+            TVTransform.ToDtype(torch.float32),                           # convert to float32
+            TVTransform.Resize(size=(128,128), antialias=True),           # resize to 128x128
+            TVTransform.Normalize(mean=[0], std=[1]),                     # normalize by mean and std
+            TVTransform.RandomHorizontalFlip(),                           # random horizontal flip
+            TVTransform.RandomVerticalFlip()                              # random vertical flip
             ])
-        dataset    = MyDataset(file_paths, transform)           # create custom Dataset
-        train_size = int(self.train_perc * len(dataset))        # define training set size
-        valid_size = int(self.valid_perc * len(dataset))        # define validation set size
-        test_size  = len(dataset) - (train_size + valid_size)   # define testing set size
+        dataset    = MyDataset(file_paths, transform, norm_type='MinMax') # create custom Dataset (with Transform and Normalization)
+        train_size = int(self.train_perc * len(dataset))                  # define training set size
+        valid_size = int(self.valid_perc * len(dataset))                  # define validation set size
+        test_size  = len(dataset) - (train_size + valid_size)             # define testing set size
         if self.verbose:
             print('Total: {} - Training: {} | Validation: {} | Testing: {}'.format(len(dataset), train_size, valid_size, test_size))
         train_dataset, valid_dataset, test_dataset = random_split(dataset, [train_size, valid_size, test_size])
@@ -96,38 +96,38 @@ class Heterogeneity():
         best_val_loss, best_model = float('inf'), None                  # instantiate best model variables
         time0 = time.time()                                             # start overall timer
         for epoch in range(self.num_epochs):
-            start_time = time.time()                                # start epoch timer
+            start_time = time.time()                                    # start epoch timer
             # Training
-            self.model.train()                                      # set model to trainable mode
-            epoch_loss, epoch_ssim = 0.0, 0.0                       # instantiate empty lists for storing training metrics
-            for i, (x,y) in enumerate(self.train_dataloader):       # iterate over training batches
-                x, y = x.to(self.device), y.to(self.device)         # move data to device
-                optimizer.zero_grad()                               # zero out gradients
-                y_pred = self.model(x)                              # forward pass
-                loss = criterion(y_pred, y)                         # compute loss
-                loss.backward()                                     # backpropagation
-                optimizer.step()                                    # update weights
-                epoch_loss += loss.item()                           # accumulate loss
-                epoch_ssim += 1.0 - criterion.ssim(y_pred, y)       # accumulate SSIM
-            train_loss.append(epoch_loss/(i+1))                     # append average loss
-            train_ssim.append(epoch_ssim/(i+1))                     # append average SSIM
+            self.model.train()                                          # set model to trainable mode
+            epoch_loss, epoch_ssim = 0.0, 0.0                           # instantiate empty lists for storing training metrics
+            for i, (x,y) in enumerate(self.train_dataloader):           # iterate over training batches
+                x, y = x.to(self.device), y.to(self.device)             # move data to device
+                optimizer.zero_grad()                                   # zero out gradients
+                y_pred = self.model(x)                                  # forward pass
+                loss = criterion(y_pred, y)                             # compute loss
+                loss.backward()                                         # backpropagation
+                optimizer.step()                                        # update weights
+                epoch_loss += loss.item()                               # accumulate loss
+                epoch_ssim += 1.0 - criterion.ssim(y_pred, y)           # accumulate SSIM
+            train_loss.append(epoch_loss/(i+1))                         # append average loss
+            train_ssim.append(epoch_ssim/(i+1))                         # append average SSIM
             # Validation
-            self.model.eval()                                       # set model to evaluation mode
-            epoch_loss, epoch_ssim = 0.0, 0.0                       # instantiate empty lists for storing validation metrics
-            with torch.no_grad():                                   # disable gradient calculation
-                for i, (x,y) in enumerate(self.valid_dataloader):   # iterate over validation batches
-                    x, y = x.to(self.device), y.to(self.device)     # move data to device
-                    y_pred = self.model(x)                          # forward pass
-                    loss = criterion(y_pred, y)                     # compute loss
-                    epoch_loss += loss.item()                       # accumulate loss
-                    epoch_ssim += 1.0 - criterion.ssim(y_pred, y)   # accumulate SSIM
-            valid_loss.append(epoch_loss/(i+1))                     # append average loss
-            valid_ssim.append(epoch_ssim/(i+1))                     # append average SSIM
+            self.model.eval()                                           # set model to evaluation mode
+            epoch_loss, epoch_ssim = 0.0, 0.0                           # instantiate empty lists for storing validation metrics
+            with torch.no_grad():                                       # disable gradient calculation
+                for i, (x,y) in enumerate(self.valid_dataloader):       # iterate over validation batches
+                    x, y = x.to(self.device), y.to(self.device)         # move data to device
+                    y_pred = self.model(x)                              # forward pass
+                    loss = criterion(y_pred, y)                         # compute loss
+                    epoch_loss += loss.item()                           # accumulate loss
+                    epoch_ssim += 1.0 - criterion.ssim(y_pred, y)       # accumulate SSIM
+            valid_loss.append(epoch_loss/(i+1))                         # append average loss
+            valid_ssim.append(epoch_ssim/(i+1))                         # append average SSIM
             # Save best model and losses
-            if valid_loss[-1] < best_val_loss:                      # if validation loss is lower than previous best
-                best_val_loss = valid_loss[-1]                      # update best validation loss
-                best_model = self.model.state_dict()                # update best model
-            end_time = time.time() - start_time                     # end epoch timer
+            if valid_loss[-1] < best_val_loss:                          # if validation loss is lower than previous best
+                best_val_loss = valid_loss[-1]                          # update best validation loss
+                best_model = self.model.state_dict()                    # update best model
+            end_time = time.time() - start_time                         # end epoch timer
             if self.verbose:
                 print('Epoch: {}/{} | Train loss: {:.4f} | Val loss: {:.4f} | Train SSIM: {:.4f} | Val SSIM: {:.4f} | Time elapsed: {:.2f} sec'.format(epoch+1, self.num_epochs, train_loss[-1], epoch_loss[-1], train_ssim[-1], epoch_ssim[-1], end_time))
         print('-'*60+'\n','Total training time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
@@ -137,13 +137,58 @@ class Heterogeneity():
         if self.return_data:
             return self.model, best_model, self.losses
 
+    def tester(self, model=None, criterion=None):
+        '''
+        Subroutine for testing the model
+        '''
+        print('-'*60+'\n'+'---------------------- MODEL TESTING ----------------------') if self.verbose else None
+        if model is None:
+            model = torch.load('PixFormer_model.pt')                    # load best model
+        if criterion is None:
+            criterion = CustomLoss(mse_weight=self.mse_weight, ssim_weight=self.ssim_weight).to(self.device)
+        model.eval()                                                    # set model to evaluation mode
+        test_loss, test_ssim = 0.0, 0.0                                 # instantiate empty lists for storing testing metrics
+        time0 = time.time()                                             # start overall timer
+        with torch.no_grad():                                           # disable gradient calculation
+            for i, (x,y) in enumerate(self.test_dataloader):            # iterate over testing batches
+                x, y = x.to(self.device), y.to(self.device)             # move data to device
+                y_pred = model(x)                                       # forward pass
+                loss = criterion(y_pred, y)                             # compute loss
+                test_loss += loss.item()                                # accumulate loss
+                test_ssim += 1.0 - criterion.ssim(y_pred, y)            # accumulate SSIM
+        test_loss /= (i+1)                                              # average loss
+        test_ssim /= (i+1)                                              # average SSIM
+        print('Test loss: {:.4f} | Test SSIM: {:.4f}'.format(test_loss, test_ssim)) if self.verbose else None
+        print('-'*60+'\n','Total testing time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
+        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60) if self.verbose else None
+        return test_loss, test_ssim if self.return_data else None
+    
+    def plot_losses(self, losses=None):
+        '''
+        Plot training and validation losses
+        '''
+        if losses is None:
+            losses = self.losses
+        train_loss, valid_loss, train_ssim, valid_ssim = losses
+        fig, ax = plt.subplots(1, 2, figsize=(12,4))
+        ax1, ax2 = ax.flatten()
+        ax1.plot(train_loss, label='Train loss'); ax1.plot(valid_loss, label='Valid loss')
+        ax1.set_xlabel('Epochs', weight='bold');  ax1.set_ylabel('Loss', weight='bold')
+        ax1.legend(facecolor='lightgray', edgecolor='k', fancybox=False)
+        ax2.plot(train_ssim, label='Train SSIM'); ax2.plot(valid_ssim, label='Valid SSIM')
+        ax2.set_xlabel('Epochs', weight='bold');  ax2.set_ylabel('SSIM', weight='bold')
+        ax2.legend(facecolor='lightgray', edgecolor='k', fancybox=False)
+        plt.tight_layout(); plt.savefig('losses.png', dpi=600, bbox_inches='tight')
+        plt.show() if self.verbose else None  
+        return None
+
 class MyDataset(Dataset):
     '''
     Generate a custom dataset from .npz files
     (x) porosity, permeability, timesteps
     (y) pressure, saturation
     '''
-    def __init__(self, file_paths, transform=None, norm:str='MinMax'):
+    def __init__(self, file_paths, transform=None, norm_type:str='MinMax'):
         self.file_paths = file_paths
         self.transform  = transform
         self.tsteps     = 60
@@ -151,19 +196,20 @@ class MyDataset(Dataset):
         self.y_channels = 2
         self.orig_img   = 256
         self.half_img   = 128
-        self.norm       = lambda x: self.normalize(x, norm)
+        self.norm_type  = norm_type
+        self.norm       = lambda x: self.normalize(x)
 
-    def normalize(self, x, norm):
+    def normalize(self, x):
         x_norm = np.zeros_like(x)
-        error_msg = 'Invalid normalization scheme: {} | Select ["None", "MinMax", "ExtMinMax", "Standard"]'.format(norm)
+        error_msg = 'Invalid normalization scheme: {} | Select ["None", "MinMax", "ExtMinMax", "Standard"]'.format(self.norm_type)
         for i in range(x.shape[1]):
-            if norm == 'MinMax':
+            if self.norm_type == 'MinMax':
                 x_norm[:,i] = (x[:,i] - x[:,i].min()) / (x[:,i].max() - x[:,i].min())
-            elif norm == 'Standard':
+            elif self.norm_type == 'Standard':
                 x_norm[:,i] = (x[:,i] - x[:,i].mean()) / (x[:,i].std())
-            elif norm == 'ExtMinMax':
+            elif self.norm_type == 'ExtMinMax':
                 x_norm[:,i] = (x[:,i] - x[:,i].min()) / (x[:,i].max() - x[:,i].min()) * 2 - 1
-            elif norm == 'None':
+            elif self.norm_type == 'None':
                 x_norm = x
             else:
                 raise ValueError(error_msg)
@@ -396,12 +442,12 @@ class PixFormer(nn.Module):
         x_output = self.out(x)                                                    # output layer
         return x_output    
 
-
 ############################## MAIN ##############################
 if __name__ == '__main__': 
     # Run main routine if main.py called directly
     hete = Heterogeneity()
     hete.make_dataloaders()
     hete.trainer()
-
+    hete.tester()
+    hete.plot_losses()
 ############################## END ##############################
