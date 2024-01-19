@@ -42,7 +42,8 @@ class Heterogeneity():
             print('Torch version: {} | Torch Built with CUDA? {}'.format(torch_version, cuda_avail))
             print('# Device(s) available: {}, Name(s): {}'.format(count, name))
             print('-'*60+'\n')
-        self.device = torch.device('cuda' if cuda_avail else 'cpu')
+        #self.device = torch.device('cuda' if cuda_avail else 'cpu')
+        self.device = torch.device('cpu')
         return None
         
     def count_params(self, model):
@@ -74,6 +75,9 @@ class Heterogeneity():
         self.train_dataloader = MyDataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,          mode='train')
         self.valid_dataloader = MyDataLoader(valid_dataset, batch_size=self.batch_size, shuffle=shuffle_valid, mode='valid')
         self.test_dataloader  = MyDataLoader(test_dataset,  batch_size=self.batch_size, shuffle=shuffle_test,  mode='test')
+        if self.verbose:
+            print('X sample shape: {}'.format(self.train_dataloader.dataset[0][0].shape))
+            print('y sample shape: {}'.format(self.train_dataloader.dataset[0][1].shape))
         print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n')  if self.verbose else None
         if self.return_data:
             return self.train_dataloader, self.valid_dataloader, self.test_dataloader
@@ -247,6 +251,7 @@ class MyDataLoader(DataLoader):
     def __init__(self, *args, mode:str=None, **kwargs):
         super(MyDataLoader, self).__init__(*args, **kwargs)
         self.mode = mode
+
     def __iter__(self):
         for batch in super(MyDataLoader, self).__iter__():
             X_data, y_data = batch          # loads a batch of data with shate (b, t, c, h, w)
