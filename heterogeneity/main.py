@@ -74,7 +74,7 @@ class Heterogeneity():
         self.train_dataloader = MyDataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,          mode='train')
         self.valid_dataloader = MyDataLoader(valid_dataset, batch_size=self.batch_size, shuffle=shuffle_valid, mode='valid')
         self.test_dataloader  = MyDataLoader(test_dataset,  batch_size=self.batch_size, shuffle=shuffle_test,  mode='test')
-        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60)  if self.verbose else None
+        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n')  if self.verbose else None
         if self.return_data:
             return self.train_dataloader, self.valid_dataloader, self.test_dataloader
 
@@ -131,7 +131,7 @@ class Heterogeneity():
             if self.verbose:
                 print('Epoch: {}/{} | Train loss: {:.4f} | Val loss: {:.4f} | Train SSIM: {:.4f} | Val SSIM: {:.4f} | Time elapsed: {:.2f} sec'.format(epoch+1, self.num_epochs, train_loss[-1], epoch_loss[-1], train_ssim[-1], epoch_ssim[-1], end_time))
         print('-'*60+'\n','Total training time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
-        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60) if self.verbose else None
+        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if self.verbose else None
         self.losses = [train_loss, valid_loss, train_ssim, valid_ssim]
         torch.save(self.model, 'PixFormer_model.pt')
         if self.return_data:
@@ -160,7 +160,7 @@ class Heterogeneity():
         test_ssim /= (i+1)                                              # average SSIM
         print('Test loss: {:.4f} | Test SSIM: {:.4f}'.format(test_loss, test_ssim)) if self.verbose else None
         print('-'*60+'\n','Total testing time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
-        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60) if self.verbose else None
+        print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if self.verbose else None
         return test_loss, test_ssim if self.return_data else None
     
     def plot_losses(self, losses=None):
