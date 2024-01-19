@@ -59,7 +59,7 @@ class Heterogeneity():
         transform  = TVTransform.Compose([                                # define image transformations
             TVTransform.ToImage(),                                        # convert to PIL image
             TVTransform.ToDtype(torch.float32),                           # convert to float32
-            TVTransform.Resize(size=(128,128), antialias=True),           # resize to 128x128
+            TVTransform.Resize(size=(64,64), antialias=True),             # resize to 64x64
             TVTransform.Normalize(mean=[0], std=[1]),                     # normalize by mean and std
             TVTransform.RandomHorizontalFlip(),                           # random horizontal flip
             TVTransform.RandomVerticalFlip()                              # random vertical flip
@@ -195,7 +195,7 @@ class MyDataset(Dataset):
         self.x_channels = 3
         self.y_channels = 2
         self.orig_img   = 256
-        self.half_img   = 128
+        self.half_img   = 64
         self.norm_type  = norm_type
         self.norm       = lambda x: self.normalize(x)
 
@@ -355,7 +355,7 @@ class TransformerEncoderBlock(nn.Module):
     '''
     Single ViT block with attention
     '''
-    def __init__(self, embed_dim, num_heads, mlp_hidden_dim=512):
+    def __init__(self, embed_dim, num_heads, mlp_hidden_dim=256):
         super(TransformerEncoderBlock, self).__init__()
         self.self_attention = MultiHeadAttention(embed_dim, num_heads)   # Attention mechanism
         self.mlp_block = MLPBlock(embed_dim, mlp_hidden_dim)             # MLP block
@@ -374,7 +374,7 @@ class ViTencoder(nn.Module):
     '''
     Single ViT block with patch embedding and positional encoding
     '''
-    def __init__(self, image_size=128, latent_size=16, in_channels=3, patch_size=8, projection_dim=128, embed_dim=512, num_heads=8, num_layers=4):
+    def __init__(self, image_size=64, latent_size=16, in_channels=3, patch_size=8, projection_dim=64, embed_dim=128, num_heads=8, num_layers=4):
         super(ViTencoder, self).__init__()
         self.patch_embedding     = PatchEmbedding(image_size, patch_size, in_channels, embed_dim)   # patch embedding
         self.positional_encoding = PositionalEncoding(embed_dim)                                    # positional encoding
@@ -396,7 +396,7 @@ class MultiScaleResidual(nn.Module):
     '''
     Multiscale Residual concatenation block
     '''
-    def __init__(self, image_size=128):
+    def __init__(self, image_size=64):
         super(MultiScaleResidual, self).__init__()
         self.image_size = image_size                                     # original image size
     def forward(self, x):
@@ -413,7 +413,7 @@ class PixFormer(nn.Module):
     (1) Vision Transformer encoder
     (2) Multiscale Residual Spatiotemporal decoder
     '''
-    def __init__(self, projection_dim=128, latent_size=16):
+    def __init__(self, projection_dim=256, latent_size=8):
         super(PixFormer, self).__init__()
         self.projection_dim = projection_dim
         self.latent_size    = latent_size
@@ -422,7 +422,7 @@ class PixFormer(nn.Module):
             self._conv_block(projection_dim, projection_dim//2),                 # first decoder layer
             self._conv_block(projection_dim//2, projection_dim//4),              # second decoder layer
             self._conv_block(projection_dim//4, projection_dim//8))              # third decoder layer
-        self.out = nn.Conv2d(projection_dim//8, 1, kernel_size=3, padding=1)     # output layer
+        self.out = nn.Conv2d(projection_dim//8, 2, kernel_size=3, padding=1)     # output layer
 
     def _conv_block(self, in_channels, out_channels):
         return nn.Sequential(
