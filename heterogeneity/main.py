@@ -2,7 +2,7 @@ import os, time, math
 import numpy as np
 import matplotlib.pyplot as plt
 from einops import rearrange
-
+ 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -417,7 +417,7 @@ class PixFormer(nn.Module):
         super(PixFormer, self).__init__()
         self.projection_dim = projection_dim
         self.latent_size    = latent_size
-        self.encoder = ViTencoder(latent_size=latent_size, projection_dim=projection_dim)   # Encoder block
+        self.encoder = ViTencoder(latent_size=latent_size, projection_dim=projection_dim)
         self.layers = nn.Sequential(
             self._conv_block(projection_dim, projection_dim//2),                 # first decoder layer
             self._conv_block(projection_dim//2, projection_dim//4),              # second decoder layer
