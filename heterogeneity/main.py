@@ -2,7 +2,7 @@ import os, time, math
 import numpy as np
 import matplotlib.pyplot as plt
 from einops import rearrange
- 
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,8 +42,6 @@ class Heterogeneity():
             print('Torch version: {} | Torch Built with CUDA? {}'.format(torch_version, cuda_avail))
             print('# Device(s) available: {}, Name(s): {}'.format(count, name))
             print('-'*60+'\n')
-        #self.device = torch.device('cuda' if cuda_avail else 'cpu')
-        self.device = torch.device('cpu')
         return None
         
     def count_params(self, model):
@@ -76,8 +74,8 @@ class Heterogeneity():
         self.valid_dataloader = MyDataLoader(valid_dataset, batch_size=self.batch_size, shuffle=shuffle_valid, mode='valid')
         self.test_dataloader  = MyDataLoader(test_dataset,  batch_size=self.batch_size, shuffle=shuffle_test,  mode='test')
         if self.verbose:
-            print('X sample shape: {}'.format(self.train_dataloader.dataset[0][0].shape))
-            print('y sample shape: {}'.format(self.train_dataloader.dataset[0][1].shape))
+            print('X single sample shape: {}'.format(self.train_dataloader.dataset[0][0].shape))
+            print('y single sample shape: {}'.format(self.train_dataloader.dataset[0][1].shape))
         print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n')  if self.verbose else None
         if self.return_data:
             return self.train_dataloader, self.valid_dataloader, self.test_dataloader
@@ -138,8 +136,7 @@ class Heterogeneity():
         print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if self.verbose else None
         self.losses = [train_loss, valid_loss, train_ssim, valid_ssim]
         torch.save(self.model, 'PixFormer_model.pt')
-        if self.return_data:
-            return self.model, best_model, self.losses
+        return self.model, best_model, self.losses if self.return_data else None
 
     def tester(self, model=None, criterion=None):
         '''
@@ -266,6 +263,8 @@ class MyDataLoader(DataLoader):
                 y_data = y_data[:, 50:]     # y at timesteps 50-60
             else:
                 raise ValueError('Invalid mode: {} | select between "train", "valid" or "test"'.format(self.mode))
+            X_data = X_data[:, ::X_data.shape[1]//10]
+            y_data = y_data[:, ::y_data.shape[1]//10]
             X_data = X_data.reshape(-1, X_data.size(2), X_data.size(3), X_data.size(4)) # reshape to (b*t, c, h, w)
             y_data = y_data.reshape(-1, y_data.size(2), y_data.size(3), y_data.size(4)) # reshape to (b*t, c, h, w)
             yield X_data, y_data
@@ -278,14 +277,14 @@ class CustomLoss(nn.Module):
     def __init__(self, mse_weight=1.0, ssim_weight=1.0):
         super(CustomLoss, self).__init__()
         self.device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.mse_weight  = mse_weight                                            # weights for MSE
-        self.ssim_weight = ssim_weight                                           # weights for SSIM
-        self.mse_loss    = nn.MSELoss()                                          # Mean Squared Error
-        self.ssim        = SSIM().to(self.device)                                # Structural Similarity Index Measure
+        self.mse_weight  = mse_weight                                              # weights for MSE
+        self.ssim_weight = ssim_weight                                             # weights for SSIM
+        self.mse_loss    = nn.MSELoss()                                            # Mean Squared Error
+        self.ssim_loss   = SSIM().to(self.device)                                  # Structural Similarity Index Measure
     def forward(self, pred, target):
-        mse_loss   = self.mse_loss(pred, target)                                 # mse loss
-        ssim_loss  = 1.0 - self.ssim(pred, target)                               # ssim loss
-        total_loss = self.mse_weight * mse_loss + self.ssim_weight * ssim_loss   # combined loss
+        mse_loss   = self.mse_loss(pred, target)                                   # mse loss
+        ssim_loss  = self.ssim_loss(pred, target)                                  # ssim loss
+        total_loss = self.mse_weight * mse_loss + self.ssim_weight * (1-ssim_loss) # combined loss
         return total_loss
     
 class PatchEmbedding(nn.Module):
