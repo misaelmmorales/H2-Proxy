@@ -246,7 +246,7 @@ class MyDataLoader(DataLoader):
     (test):  x,y at timesteps 50-60
     '''
     def __init__(self, *args, mode:str=None, **kwargs):
-        super(MyDataLoader, self).__init__(*args, **kwargs)
+        super(MyDataLoader, self).__init__(*args, num_workers=8, pin_memory=True, **kwargs)
         self.mode = mode
 
     def __iter__(self):
