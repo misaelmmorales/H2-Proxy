@@ -13,7 +13,7 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 class Heterogeneity():
     '''
-    Main class for Multiscale Residual Spatiotemporal Vision Transformer (PixFormer)
+    Main class for Multiscale Residual Spatiotemporal Vision Transformer (MR-ST-ViT | PixFormer)
     '''
     def __init__(self):
         self.device       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -166,7 +166,7 @@ class Heterogeneity():
     
     def plot_losses(self, losses=None):
         '''
-        Plot training and validation losses
+        Plot training and validation losses (total & ssim only)
         '''
         if losses is None:
             losses = self.losses
@@ -201,6 +201,9 @@ class MyDataset(Dataset):
         self.norm       = lambda x: self.normalize(x)
 
     def normalize(self, x):
+        '''
+        Normalize dataset based on user-defined scheme
+        '''
         x_norm = np.zeros_like(x)
         error_msg = 'Invalid normalization scheme: {} | Select ["None", "MinMax", "ExtMinMax", "Standard"]'.format(self.norm_type)
         for i in range(x.shape[1]):
