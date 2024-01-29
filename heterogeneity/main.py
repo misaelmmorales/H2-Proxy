@@ -1,7 +1,9 @@
 import os, time, math
 import numpy as np
 import matplotlib.pyplot as plt
+
 from einops import rearrange
+import lightning as L
 
 import torch
 import torch.nn as nn
@@ -10,6 +12,7 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision.transforms import v2 as TVTransform
 from torchvision.ops import SqueezeExcitation
 from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
+
 
 class Heterogeneity():
     '''
@@ -198,7 +201,8 @@ class MyDataset(Dataset):
         self.orig_img   = 256
         self.half_img   = 64
         self.norm_type  = norm_type
-        self.norm       = lambda x: self.normalize(x)
+        #self.norm       = lambda x: self.normalize(x)
+        self.norm       = self.normalize
 
     def normalize(self, x):
         '''
