@@ -7,5 +7,3 @@ heterogeneity/h2datag/*
 
 heterogeneity/train_dataF/*
 heterogeneity/train_dataG/*
-
-*.npz
