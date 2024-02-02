@@ -11,7 +11,7 @@ from torchvision.transforms import v2 as transforms
 from torchvision.ops import SqueezeExcitation
 from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
-class H2ViT():
+class H2ViT:
     def __init__(self):
         self.verbose      = True          # print progress
         self.return_data  = False         # return data
