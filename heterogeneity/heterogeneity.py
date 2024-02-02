@@ -111,26 +111,6 @@ class H2ViT():
         torch.save(self.model.state_dict(), 'h2vit_model.pth')
         return self.model, self.losses if self.return_data else None
     
-    def test_model(self, model=None, criterion=None):
-        '''
-        Subroutine for testing the model
-        '''
-        if model is None:
-            model = H2ViTnet().to(self.device)
-            model.load_state_dict(torch.load('h2vit_model.pth'))
-        if criterion is None:
-            criterion = CustomLoss(mse_weight=self.mse_weight, ssim_weight=self.ssim_weight).to(self.device)
-        test_loss, time0 = [], time.time()
-        model.eval()
-        with torch.no_grad():
-            for i, (x,y) in enumerate(self.test_loader):
-                x, y = x.to(self.device), y.to(self.device)
-                y_pred = model(x)
-                loss = criterion(y_pred, y)
-                test_loss.append(loss.item())
-        print('Test loss: {:.4f} | Time elapsed: {:.2f} sec'.format(np.mean(test_loss), time.time()-time0)) if self.verbose else None
-        return test_loss if self.return_data else None
-    
     def plot_losses(self, losses):
         '''
         Plot the training and validation losses
@@ -353,7 +333,6 @@ if __name__ == '__main__':
     h = H2ViT()
     h.load_data()
     h.train_model()
-    h.test_model()
     h.plot_losses()
     print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if h.verbose else None
 
