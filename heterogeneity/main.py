@@ -16,7 +16,7 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 class Heterogeneity():
     '''
-    Main class for Multiscale Residual Spatiotemporal Vision Transformer (MR-ST-ViT | PixFormer)
+    Main class for Multiscale Spatiotemporal Vision Transformer (MST-ViT | PixFormer)
     '''
     def __init__(self):
         self.device       = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -174,7 +174,7 @@ class Heterogeneity():
         if losses is None:
             losses = self.losses
         train_loss, valid_loss, train_ssim, valid_ssim = losses
-        fig, ax = plt.subplots(1, 2, figsize=(12,4))
+        _, ax = plt.subplots(1, 2, figsize=(12,4))
         ax1, ax2 = ax.flatten()
         ax1.plot(train_loss, label='Train loss'); ax1.plot(valid_loss, label='Valid loss')
         ax1.set_xlabel('Epochs', weight='bold');  ax1.set_ylabel('Loss', weight='bold')
@@ -405,7 +405,7 @@ class ViTencoder(nn.Module):
     
 class MultiScaleResidual(nn.Module):
     '''
-    Multiscale Residual concatenation block
+    Multiscale residual concatenation block
     '''
     def __init__(self, image_size=64):
         super(MultiScaleResidual, self).__init__()
@@ -422,7 +422,7 @@ class PixFormer(nn.Module):
     '''
     PixFormer model: 
     (1) Vision Transformer encoder
-    (2) Multiscale Residual Spatiotemporal decoder
+    (2) Multiscale Spatiotemporal decoder
     '''
     def __init__(self, projection_dim=256, latent_size=8):
         super(PixFormer, self).__init__()
