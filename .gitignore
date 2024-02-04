@@ -7,3 +7,6 @@ heterogeneity/h2datag/*
 
 heterogeneity/train_dataF/*
 heterogeneity/train_dataG/*
+
+heterogeneity/train_dataF_64x64/*
+heterogeneity/train_dataG_64x64/*
