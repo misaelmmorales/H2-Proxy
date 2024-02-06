@@ -13,18 +13,18 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 class H2ViT:
     def __init__(self):
-        self.verbose      = True          # print progress
-        self.return_data  = False         # return data
-        self.folder       = 'train_dataF' # dataset directory (F=fluvial, G=gaussian)
-        self.lr           = 1e-3          # learning rate
-        self.weight_decay = 1e-5          # weight decay for learning rate
-        self.mse_weight   = 1.0           # Combined loss MSE weight
-        self.ssim_weight  = 1.0           # Combined loss SSIM weight
-        self.train_perc   = 0.10          # training set split percentage (of total)
-        self.valid_perc   = 0.05          # validation set split percentage (of total)
-        self.batch_size   = 32            # batch size
-        self.num_epochs   = 100           # number of epochs
-        self.check_torch_gpu()            # check if torch is built with GPU support
+        self.verbose      = True                # print progress
+        self.return_data  = False               # return data
+        self.folder       = 'train_dataF_64x64' # dataset directory (F=fluvial, G=gaussian)
+        self.lr           = 1e-3                # learning rate
+        self.weight_decay = 1e-5                # weight decay for learning rate
+        self.mse_weight   = 1.0                 # Combined loss MSE weight
+        self.ssim_weight  = 1.0                 # Combined loss SSIM weight
+        self.train_perc   = 0.10                # training set split percentage (of total)
+        self.valid_perc   = 0.05                # validation set split percentage (of total)
+        self.batch_size   = 32                  # batch size
+        self.num_epochs   = 100                 # number of epochs
+        self.check_torch_gpu()                  # check if torch is built with GPU support
 
     def check_torch_gpu(self):
         '''
