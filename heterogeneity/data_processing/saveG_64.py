@@ -20,4 +20,4 @@ def process_realization_G(i):
     np.savez('train_dataG_64x64/realization_{}'.format(i), X_data=X_data, y_data=y_data)
 
 with ThreadPoolExecutor(max_workers=n_workers) as executor:
-    executor.map(process_realization_G, range(n_realizations))
+    executor.map(process_realization_G, range(1,n_realizations+1))
