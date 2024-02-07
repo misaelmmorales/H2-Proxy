@@ -5,6 +5,9 @@ heterogeneity/data2D/y_data.npy
 heterogeneity/h2dataf/*
 heterogeneity/h2datag/*
 
+heterogeneity/Fdataset/*
+heterogeneity/Gdataset/*
+
 heterogeneity/train_dataF/*
 heterogeneity/train_dataG/*
 
