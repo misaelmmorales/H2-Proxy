@@ -13,18 +13,34 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure as SSIM
 
 class H2ViT:
     def __init__(self):
-        self.verbose      = True                # print progress
-        self.return_data  = False               # return data
-        self.folder       = 'train_dataF_64x64' # dataset directory (F=fluvial, G=gaussian)
-        self.lr           = 1e-3                # learning rate
-        self.weight_decay = 1e-5                # weight decay for learning rate
-        self.mse_weight   = 1.0                 # Combined loss MSE weight
-        self.ssim_weight  = 1.0                 # Combined loss SSIM weight
-        self.train_perc   = 0.10                # training set split percentage (of total)
-        self.valid_perc   = 0.05                # validation set split percentage (of total)
-        self.batch_size   = 32                  # batch size
-        self.num_epochs   = 100                 # number of epochs
+        self.verbose        = True                # print progress
+        self.return_data    = False               # return data
+        self.folder         = 'train_dataF_64x64' # dataset directory (F=fluvial, G=gaussian)
+
+        self.train_perc     = 0.70                # training set split percentage (of total)
+        self.valid_perc     = 0.15                # validation set split percentage (of total)
+        self.batch_size     = 25                  # batch size
+
+        self.num_epochs     = 200                 # number of epochs
+        self.monitor_step   = 10                  # monitoring training performance
+        self.lr             = 1e-3                # learning rate
+        self.weight_decay   = 1e-5                # weight decay for learning rate
+        self.mse_weight     = 0.75                # Combined loss MSE weight
+        self.ssim_weight    = 0.25                # Combined loss SSIM weight
+        
+        self.image_size     = 64                  # image size
+        self.in_channels    = 3                   # input channels
+        self.out_channels   = 2                   # output channels
+        self.patch_size     = 16                  # patch size
+        self.projection_dim = 64                  # projection dimension
+        self.num_layers     = 4                   # number of layers
+        self.num_heads      = 8                   # number of heads
+        self.embed_dim      = 256                 # embedding dimension
+        self.max_seq_len    = 102                 # maximum sequence length
+        self.mlp_hidden_dim = 128                 # MLP hidden dimension
+
         self.check_torch_gpu()                  # check if torch is built with GPU support
+
 
     def check_torch_gpu(self):
         '''
@@ -50,7 +66,10 @@ class H2ViT:
         Make the Train/Valid/Test dataloaders from custom Dataset and DataLoader classes
         '''
         print('-'*60+'\n'+'-------------- DATA LOADING AND PREPROCESSING --------------') if self.verbose else None
-        dataset = CustomDataset(self.folder)
+        x_transform = transforms.Compose([transforms.Normalize(mean=[0, 0, 0], std=[1,1,1])])
+        y_transform = transforms.Compose([transforms.Normalize(mean=[0, 0], std=[1,1])])
+        self.transforms = [x_transform, y_transform]
+        dataset = CustomDataset(self.folder, x_transform, y_transform)
         train_size = int(self.train_perc * len(dataset))
         valid_size = int(self.valid_perc * len(dataset))
         test_size  = len(dataset) - train_size - valid_size
@@ -59,7 +78,7 @@ class H2ViT:
         self.valid_loader = CustomDataloader(valid_data, mode='valid', batch_size=self.batch_size, shuffle=True)
         self.test_loader  = CustomDataloader(test_data,  mode='test',  batch_size=self.batch_size, shuffle=True)
         if self.verbose:
-            print('Train size:   {} | Valid size:  {} | Test size:  {}'.format(train_size, valid_size, test_size))
+            print('Train size:   {} | Valid size:   {} | Test size:   {}'.format(train_size, valid_size, test_size))
             print('Train batches: {} | Valid batches: {} | Test batches: {}'.format(len(self.train_loader), len(self.valid_loader), len(self.test_loader)))
             print('-'*60+'\n')
         if self.return_data:
@@ -69,7 +88,11 @@ class H2ViT:
         '''
         Subroutine for training the model
         '''
-        self.model = H2ViTnet().to(self.device)
+        self.model = H2ViTnet(image_size=self.image_size, in_channels=self.in_channels, 
+                              patch_size=self.patch_size, projection_dim=self.projection_dim, 
+                              num_layers=self.num_layers, num_heads=self.num_heads, 
+                              embed_dim=self.embed_dim,   max_seq_len=self.max_seq_len, 
+                              mlp_hidden_dim=self.mlp_hidden_dim).to(self.device)
         if optimizer is None:
             optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         if criterion is None:
@@ -103,20 +126,21 @@ class H2ViT:
                 valid_loss.append(epoch_loss/(i+1))
             # Save model and losses
             end_time = time.time() - start_time
-            if self.verbose:
-                print('Epoch: {}/{} | Train loss: {:.4f} | Val loss: {:.4f} | Time elapsed: {:.2f} sec'.format(epoch+1, self.num_epochs, train_loss[-1], valid_loss[-1], end_time))
+            if self.verbose and (epoch+1) % self.monitor_step == 0:
+                print('Epoch: {}/{} | Train loss: {:.4f} | Val loss: {:.4f} | Time elapsed: {:.2f} sec'.format(
+                    epoch+1, self.num_epochs, train_loss[-1], valid_loss[-1], end_time))
         print('-'*60+'\n','Total training time: {:.2f} min'.format((time.time()-time0)/60), '\n'+'-'*60+'\n') if self.verbose else None
         print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if self.verbose else None
         self.losses = [train_loss, valid_loss]
-        torch.save(self.model.state_dict(), 'h2vit_model.pth')
+        #torch.save(self.model.state_dict(), 'h2vit_model.pth')
         return self.model, self.losses if self.return_data else None
     
-    def plot_losses(self, losses):
+    def plot_losses(self, figsize=(5,4)):
         '''
         Plot the training and validation losses
         '''
-        train_loss, valid_loss = losses
-        plt.figure(figsize=(10,5))
+        train_loss, valid_loss = self.losses
+        plt.figure(figsize=figsize)
         plt.plot(train_loss, label='Train loss')
         plt.plot(valid_loss, label='Valid loss')
         plt.xlabel('Epochs', weight='bold'); plt.ylabel('Loss', weight='bold')
@@ -131,20 +155,30 @@ class H2ViT:
 ########################### DATA LOADING AND PREPROCESSING ##########################
 #####################################################################################
 class CustomDataset(Dataset):
-    def __init__(self, data_folder):
+    def __init__(self, data_folder, x_transform=None, y_transform=None):
         self.data_folder = data_folder
-        self.file_list = os.listdir(data_folder)
+        self.file_list   = os.listdir(data_folder)
+        self.x_transform = x_transform
+        self.y_transform = y_transform
+        self.transform   = True if x_transform and y_transform else False
     def __len__(self):
         return len(self.file_list)
     def __getitem__(self, idx):
         file_path = os.path.join(self.data_folder, self.file_list[idx])
         data = np.load(file_path)
-        return torch.Tensor(data['X_data']), torch.Tensor(data['y_data'] )
+        X_data, y_data = torch.Tensor(data['X_data']), torch.Tensor(data['y_data'] )
+        if self.transform:
+            X_data = self.x_transform(X_data)
+            y_data = self.y_transform(y_data)
+        return X_data, y_data
     
 class CustomDataloader(DataLoader):
-    def __init__(self, *args, mode:str=None, **kwargs):
+    def __init__(self, *args, mode:str=None, x_transform=None, y_transform=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.mode = mode
+        self.mode        = mode
+        self.x_transform = x_transform
+        self.y_transform = y_transform
+        self.transform   = True if x_transform and y_transform else False
     def __iter__(self):
         for batch in super().__iter__():
             X_data, y_data = batch
@@ -163,27 +197,25 @@ class CustomDataloader(DataLoader):
             y_data = y_data[:, ::y_data.shape[1]//10]
             X_data = X_data.reshape(-1, X_data.size(2), X_data.size(3), X_data.size(4)) # reshape to (b*t, c, h, w)
             y_data = y_data.reshape(-1, y_data.size(2), y_data.size(3), y_data.size(4)) # reshape to (b*t, c, h, w)
+            if self.transform:
+                X_data = self.x_transform(X_data)
+                y_data = self.y_transform(y_data)
             yield X_data, y_data    
 
 #####################################################################################
 ################################### MODEL CLASSES ###################################
 #####################################################################################
 class CustomLoss(nn.Module):
-    '''
-    Define custom loss function: L = a*MSE + b*(1-SSIM)
-    '''
     def __init__(self, mse_weight=1.0, ssim_weight=1.0):
         super(CustomLoss, self).__init__()
-        self.device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.mse_weight  = mse_weight                                              # weights for MSE
-        self.ssim_weight = ssim_weight                                             # weights for SSIM
-        self.mse_loss    = nn.MSELoss()                                            # Mean Squared Error
-        self.ssim_loss   = SSIM().to(self.device)                                  # Structural Similarity Index Measure
-    def forward(self, pred, target):
-        mse_loss   = self.mse_loss(pred, target)                                   # mse loss
-        ssim_loss  = self.ssim_loss(pred, target)                                  # ssim loss
-        total_loss = self.mse_weight * mse_loss + self.ssim_weight * (1-ssim_loss) # combined loss
-        return total_loss
+        self.mse_weight  = mse_weight
+        self.ssim_weight = ssim_weight
+        self.mse         = nn.MSELoss()
+        self.ssim        = SSIM()
+    def forward(self, y_pred, y_true):
+        mse_loss  = self.mse(y_pred, y_true)
+        ssim_loss = 1 - self.ssim(y_pred, y_true)
+        return self.mse_weight*mse_loss + self.ssim_weight*ssim_loss
     
 class PatchEmbedding(nn.Module):
     '''
@@ -276,9 +308,8 @@ class ViTencoder(nn.Module):
     '''
     Single ViT block with patch embedding and positional encoding
     '''
-    def __init__(self, image_size=256, in_channels=3,
-                 num_heads=8, num_layers=2, latent_size=32, patch_size=8, projection_dim=64, embed_dim=16,
-                 max_seq_len=1024, mlp_hidden_dim=64):
+    def __init__(self, image_size, in_channels, latent_size, patch_size, projection_dim, 
+                 num_layers, num_heads, embed_dim, max_seq_len, mlp_hidden_dim):
         super(ViTencoder, self).__init__()
         self.patch_embedding     = PatchEmbedding(image_size, patch_size, in_channels, embed_dim)      # patch embedding
         self.positional_encoding = PositionalEncoding(embed_dim, max_seq_len)                          # positional encoding
@@ -297,28 +328,42 @@ class ViTencoder(nn.Module):
         return x
     
 class H2ViTnet(nn.Module):
-    def __init__(self, projection_dim=64, latent_size=32):
+    def __init__(self, image_size=64, in_channels=3, patch_size=8, projection_dim=32, 
+                 num_layers=2, num_heads=8, embed_dim=16, max_seq_len=256, mlp_hidden_dim=64):
         super(H2ViTnet, self).__init__()
+        self.image_size     = image_size
+        self.in_channels    = in_channels
         self.projection_dim = projection_dim
-        self.latent_size    = latent_size
-
-        self.encoder = ViTencoder(projection_dim=projection_dim, latent_size=latent_size)
+        self.latent_size    = self.image_size//8
+        self.patch_size     = patch_size
+        self.num_layers     = num_layers
+        self.num_heads      = num_heads
+        self.embed_dim      = embed_dim
+        self.mlp_hidden_dim = mlp_hidden_dim
+        self.max_seq_len    = max_seq_len
+        self.encoder = ViTencoder(image_size     = self.image_size, 
+                                  in_channels    = self.in_channels,
+                                  projection_dim = projection_dim, 
+                                  latent_size    = self.latent_size,
+                                  patch_size     = self.patch_size,
+                                  num_heads      = self.num_heads,
+                                  num_layers     = self.num_layers,
+                                  embed_dim      = self.embed_dim,
+                                  max_seq_len    = self.max_seq_len,
+                                  mlp_hidden_dim = self.mlp_hidden_dim)
         self.layers = nn.Sequential(
             self._conv_block(projection_dim, projection_dim//2),
             self._conv_block(projection_dim//2, projection_dim//4),
-            self._conv_block(projection_dim//4, projection_dim//8),
+            self._conv_block(projection_dim//4, self.latent_size),
         )
-        self.out = nn.Conv2d(projection_dim//8, 2, kernel_size=3, padding=1)
-
+        self.out = nn.Conv2d(self.latent_size, 2, kernel_size=3, padding=1)
     def _conv_block(self, in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             SqueezeExcitation(out_channels, out_channels//4),
             nn.InstanceNorm2d(out_channels),
             nn.PReLU(),
-            nn.Upsample(scale_factor=2),
-        )
-    
+            nn.Upsample(scale_factor=2))
     def forward(self, x):
         x = self.encoder(x)
         x = x.view(-1, self.projection_dim, self.latent_size, self.latent_size)
@@ -334,6 +379,35 @@ if __name__ == '__main__':
     h.load_data()
     h.train_model()
     h.plot_losses()
+
+    for i, (x0, y0) in enumerate(h.train_loader):
+        print(x0.shape, y0.shape)
+        break
+    yh = h.model(x0.to(h.device))
+    x0 = x0.detach().numpy().reshape(h.batch_size, 10, h.in_channels, h.image_size, h.image_size)
+    y0 = y0.detach().numpy().reshape(h.batch_size, 10, h.out_channels, h.image_size, h.image_size)
+    yh = yh.detach().cpu().numpy().reshape(h.batch_size, 10, h.out_channels, h.image_size, h.image_size)
+    print('X0: {} | Y0: {} | Yh: {}'.format(x0.shape, y0.shape, yh.shape))
+    figsize=(15,4)
+    fig, axs = plt.subplots(3, 10, figsize=figsize)
+    for i in range(3):
+        for j in range(10):
+            axs[i,j].imshow(x0[i, j, 0], 'jet')
+            axs[i,j].set(xticks=[], yticks=[])
+    plt.tight_layout(); plt.savefig('x0.png')
+    fig, axs = plt.subplots(3, 10, figsize=figsize)
+    for i in range(3):
+        for j in range(10):
+            axs[i,j].imshow(y0[i, j, 1], 'jet')
+            axs[i,j].set(xticks=[], yticks=[])
+    plt.tight_layout(); plt.savefig('y0.png')
+    fig, axs = plt.subplots(3, 10, figsize=figsize)
+    for i in range(3):
+        for j in range(10):
+            axs[i,j].imshow(yh[i, j, 1], 'jet')
+            axs[i,j].set(xticks=[], yticks=[])
+    plt.tight_layout(); plt.savefig('yh.png')
+
     print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if h.verbose else None
 
 #####################################################################################
