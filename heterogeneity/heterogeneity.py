@@ -411,6 +411,7 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.savefig('yh.png')
 
+    torch.save(h.model.state_dict(), 'h2vit_model.pth')
     print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if h.verbose else None
 
 #####################################################################################
