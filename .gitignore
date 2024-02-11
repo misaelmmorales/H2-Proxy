@@ -8,8 +8,8 @@ heterogeneity/h2datag/*
 heterogeneity/Fdataset/*
 heterogeneity/Gdataset/*
 
-heterogeneity/train_dataF/*
-heterogeneity/train_dataG/*
+heterogeneity/train_dataF_256x256/*
+heterogeneity/train_dataG_256x256/*
 
 heterogeneity/train_dataF_64x64/*
 heterogeneity/train_dataG_64x64/*

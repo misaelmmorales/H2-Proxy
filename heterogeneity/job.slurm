@@ -6,14 +6,14 @@
 #SBATCH -p gpu-a100      # Queue (partition) name
 #SBATCH -N 1             # Total # of nodes (must be 1 for serial)
 #SBATCH -n 1             # Total # of mpi tasks (should be 1 for serial)
-#SBATCH -t 24:00:00      # Run time (hh:mm:ss)
+#SBATCH -t 48:00:00      # Run time (hh:mm:ss)
 #SBATCH -A EAR23030      # Project/Allocation name
 #SBATCH --mail-type=all  # Send email at begin and end of job
 #SBATCH --mail-user=misaelmorales@utexas.edu
 
-# Any other commands must follow all #SBATCH directives...
+# Startup environment
 pwd
 date
 
-# Launch serial code...
+# Run the program
 python3 heterogeneity.py

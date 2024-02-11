@@ -36,7 +36,7 @@ class H2ViT:
         self.num_layers     = 4                   # number of layers
         self.num_heads      = 8                   # number of heads
         self.embed_dim      = 256                 # embedding dimension
-        self.max_seq_len    = 102                 # maximum sequence length
+        self.max_seq_len    = 512                 # maximum sequence length
         self.mlp_hidden_dim = 128                 # MLP hidden dimension
 
         self.check_torch_gpu()                  # check if torch is built with GPU support
@@ -78,7 +78,7 @@ class H2ViT:
         self.valid_loader = CustomDataloader(valid_data, mode='valid', batch_size=self.batch_size, shuffle=True)
         self.test_loader  = CustomDataloader(test_data,  mode='test',  batch_size=self.batch_size, shuffle=True)
         if self.verbose:
-            print('Train size:   {} | Valid size:   {} | Test size:   {}'.format(train_size, valid_size, test_size))
+            print('Train size:   {} | Valid size:  {} | Test size:  {}'.format(train_size, valid_size, test_size))
             print('Train batches: {} | Valid batches: {} | Test batches: {}'.format(len(self.train_loader), len(self.valid_loader), len(self.test_loader)))
             print('-'*60+'\n')
         if self.return_data:
@@ -200,7 +200,7 @@ class CustomDataloader(DataLoader):
             if self.transform:
                 X_data = self.x_transform(X_data)
                 y_data = self.y_transform(y_data)
-            yield X_data, y_data    
+            yield X_data, y_data
 
 #####################################################################################
 ################################### MODEL CLASSES ###################################
@@ -394,19 +394,22 @@ if __name__ == '__main__':
         for j in range(10):
             axs[i,j].imshow(x0[i, j, 0], 'jet')
             axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout(); plt.savefig('x0.png')
+    plt.tight_layout()
+    plt.savefig('x0.png')
     fig, axs = plt.subplots(3, 10, figsize=figsize)
     for i in range(3):
         for j in range(10):
             axs[i,j].imshow(y0[i, j, 1], 'jet')
             axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout(); plt.savefig('y0.png')
+    plt.tight_layout()
+    plt.savefig('y0.png')
     fig, axs = plt.subplots(3, 10, figsize=figsize)
     for i in range(3):
         for j in range(10):
             axs[i,j].imshow(yh[i, j, 1], 'jet')
             axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout(); plt.savefig('yh.png')
+    plt.tight_layout()
+    plt.savefig('yh.png')
 
     print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if h.verbose else None
 
