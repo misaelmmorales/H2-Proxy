@@ -16,31 +16,30 @@ class H2ViT:
         self.verbose        = True                # print progress
         self.return_data    = False               # return data
         self.folder         = 'train_dataF_64x64' # dataset directory (F=fluvial, G=gaussian)
+        self.check_torch_gpu()                    # check if torch is built with GPU support
+        
+        self.image_size     = 64                  # image size      (DO NOT CHANGE)
+        self.in_channels    = 3                   # input channels  (DO NOT CHANGE)
+        self.out_channels   = 2                   # output channels (DO NOT CHANGE)
 
         self.train_perc     = 0.70                # training set split percentage (of total)
         self.valid_perc     = 0.15                # validation set split percentage (of total)
         self.batch_size     = 25                  # batch size
 
-        self.num_epochs     = 200                 # number of epochs
+        self.num_epochs     = 120                 # number of epochs
         self.monitor_step   = 10                  # monitoring training performance
         self.lr             = 1e-3                # learning rate
         self.weight_decay   = 1e-5                # weight decay for learning rate
-        self.mse_weight     = 0.75                # Combined loss MSE weight
-        self.ssim_weight    = 0.25                # Combined loss SSIM weight
-        
-        self.image_size     = 64                  # image size
-        self.in_channels    = 3                   # input channels
-        self.out_channels   = 2                   # output channels
+        self.mse_weight     = 0.80                # Combined loss MSE weight
+        self.ssim_weight    = 0.20                # Combined loss SSIM weight
+
         self.patch_size     = 16                  # patch size
-        self.projection_dim = 64                  # projection dimension
-        self.num_layers     = 4                   # number of layers
+        self.projection_dim = 128                 # projection dimension
+        self.num_layers     = 3                   # number of layers
         self.num_heads      = 8                   # number of heads
-        self.embed_dim      = 256                 # embedding dimension
-        self.max_seq_len    = 512                 # maximum sequence length
+        self.embed_dim      = 512                 # embedding dimension
+        self.max_seq_len    = 1024                # maximum sequence length
         self.mlp_hidden_dim = 128                 # MLP hidden dimension
-
-        self.check_torch_gpu()                  # check if torch is built with GPU support
-
 
     def check_torch_gpu(self):
         '''
@@ -74,9 +73,9 @@ class H2ViT:
         valid_size = int(self.valid_perc * len(dataset))
         test_size  = len(dataset) - train_size - valid_size
         train_data, valid_data, test_data = random_split(dataset, [train_size, valid_size, test_size])
-        self.train_loader = CustomDataloader(train_data, mode='train', batch_size=self.batch_size, shuffle=True)
-        self.valid_loader = CustomDataloader(valid_data, mode='valid', batch_size=self.batch_size, shuffle=True)
-        self.test_loader  = CustomDataloader(test_data,  mode='test',  batch_size=self.batch_size, shuffle=True)
+        self.train_loader = CustomDataloader(train_data, mode='train', batch_size=self.batch_size, shuffle=True, x_transform=x_transform, y_transform=y_transform)
+        self.valid_loader = CustomDataloader(valid_data, mode='valid', batch_size=self.batch_size, shuffle=True, x_transform=x_transform, y_transform=y_transform)
+        self.test_loader  = CustomDataloader(test_data,  mode='test',  batch_size=self.batch_size, shuffle=True, x_transform=x_transform, y_transform=y_transform)
         if self.verbose:
             print('Train size:   {} | Valid size:  {} | Test size:  {}'.format(train_size, valid_size, test_size))
             print('Train batches: {} | Valid batches: {} | Test batches: {}'.format(len(self.train_loader), len(self.valid_loader), len(self.test_loader)))
@@ -135,7 +134,7 @@ class H2ViT:
         #torch.save(self.model.state_dict(), 'h2vit_model.pth')
         return self.model, self.losses if self.return_data else None
     
-    def plot_losses(self, figsize=(5,4)):
+    def plot_losses(self, figsize=(5,4), showfig:bool=True):
         '''
         Plot the training and validation losses
         '''
@@ -148,7 +147,42 @@ class H2ViT:
         plt.legend(facecolor='lightgrey', edgecolor='k', fancybox=False)
         plt.tight_layout()
         plt.savefig('losses.png', dpi=600, bbox_inches='tight')
-        plt.show() if self.verbose else None
+        plt.show() if showfig and self.verbose else None
+        return None
+    
+    def plot_samples(self, figsize=(15,4)):
+        for i, (x0, y0) in enumerate(self.train_loader):
+            print(x0.shape, y0.shape)
+            break
+        def process(x, n_channels, to_cpu=False):
+            if to_cpu:
+                x1 = x.detach().cpu().numpy().reshape(self.batch_size, 10, n_channels, self.image_size, self.image_size)
+            else:
+                x1 = x.detach().numpy().reshape(self.batch_size, 10, n_channels, self.image_size, self.image_size)
+            return x1
+        yh = self.model(x0.to(self.device))
+        x0 = process(x0, self.in_channels)
+        y0 = process(y0, self.out_channels)
+        yh = process(yh, self.out_channels, to_cpu=True)
+        print('X0: {} | Y0: {} | Yh: {}'.format(x0.shape, y0.shape, yh.shape))
+        fig, axs = plt.subplots(3, 10, figsize=figsize)
+        for i in range(3):
+            for j in range(10):
+                axs[i,j].imshow(x0[i, j, 0], 'jet')
+                axs[i,j].set(xticks=[], yticks=[])
+        plt.tight_layout(); plt.savefig('x0.png')
+        fig, axs = plt.subplots(3, 10, figsize=figsize)
+        for i in range(3):
+            for j in range(10):
+                axs[i,j].imshow(y0[i, j, 1], 'jet')
+                axs[i,j].set(xticks=[], yticks=[])
+        plt.tight_layout(); plt.savefig('y0.png')
+        fig, axs = plt.subplots(3, 10, figsize=figsize)
+        for i in range(3):
+            for j in range(10):
+                axs[i,j].imshow(yh[i, j, 1], 'jet')
+                axs[i,j].set(xticks=[], yticks=[])
+        plt.tight_layout(); plt.savefig('yh.png')
         return None
 
 #####################################################################################
@@ -378,39 +412,8 @@ if __name__ == '__main__':
     h = H2ViT()
     h.load_data()
     h.train_model()
-    h.plot_losses()
-
-    for i, (x0, y0) in enumerate(h.train_loader):
-        print(x0.shape, y0.shape)
-        break
-    yh = h.model(x0.to(h.device))
-    x0 = x0.detach().numpy().reshape(h.batch_size, 10, h.in_channels, h.image_size, h.image_size)
-    y0 = y0.detach().numpy().reshape(h.batch_size, 10, h.out_channels, h.image_size, h.image_size)
-    yh = yh.detach().cpu().numpy().reshape(h.batch_size, 10, h.out_channels, h.image_size, h.image_size)
-    print('X0: {} | Y0: {} | Yh: {}'.format(x0.shape, y0.shape, yh.shape))
-    figsize=(15,4)
-    fig, axs = plt.subplots(3, 10, figsize=figsize)
-    for i in range(3):
-        for j in range(10):
-            axs[i,j].imshow(x0[i, j, 0], 'jet')
-            axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout()
-    plt.savefig('x0.png')
-    fig, axs = plt.subplots(3, 10, figsize=figsize)
-    for i in range(3):
-        for j in range(10):
-            axs[i,j].imshow(y0[i, j, 1], 'jet')
-            axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout()
-    plt.savefig('y0.png')
-    fig, axs = plt.subplots(3, 10, figsize=figsize)
-    for i in range(3):
-        for j in range(10):
-            axs[i,j].imshow(yh[i, j, 1], 'jet')
-            axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout()
-    plt.savefig('yh.png')
-
+    h.plot_losses(showfig=False)
+    h.plot_samples()
     torch.save(h.model.state_dict(), 'h2vit_model.pth')
     print(' '*24+'... done ...'+' '*24+'\n'+'-'*60+'\n') if h.verbose else None
 
