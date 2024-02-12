@@ -26,20 +26,20 @@ class H2ViT:
         self.valid_perc     = 0.15                # validation set split percentage (of total)
         self.batch_size     = 25                  # batch size
 
-        self.num_epochs     = 120                 # number of epochs
-        self.monitor_step   = 10                  # monitoring training performance
+        self.num_epochs     = 300                 # number of epochs
+        self.monitor_step   = 25                  # monitoring training performance
         self.lr             = 1e-3                # learning rate
         self.weight_decay   = 1e-5                # weight decay for learning rate
-        self.mse_weight     = 0.80                # Combined loss MSE weight
-        self.ssim_weight    = 0.20                # Combined loss SSIM weight
+        self.mse_weight     = 0.66                # Combined loss MSE weight (mse+mae=1.0)
+        self.ssim_weight    = 0.33                # Combined loss SSIM weight (ssim+lp=ssim+mae+mse=1.0)
 
-        self.patch_size     = 16                  # patch size
-        self.projection_dim = 128                 # projection dimension
-        self.num_layers     = 3                   # number of layers
+        self.patch_size     = 4                   # patch size
+        self.projection_dim = 256                 # projection dimension
+        self.num_layers     = 4                   # number of layers
         self.num_heads      = 8                   # number of heads
         self.embed_dim      = 512                 # embedding dimension
         self.max_seq_len    = 1024                # maximum sequence length
-        self.mlp_hidden_dim = 128                 # MLP hidden dimension
+        self.mlp_hidden_dim = 256                 # MLP hidden dimension
 
     def check_torch_gpu(self):
         '''
@@ -242,14 +242,17 @@ class CustomDataloader(DataLoader):
 class CustomLoss(nn.Module):
     def __init__(self, mse_weight=1.0, ssim_weight=1.0):
         super(CustomLoss, self).__init__()
-        self.mse_weight  = mse_weight
         self.ssim_weight = ssim_weight
+        self.mse_weight  = mse_weight
         self.mse         = nn.MSELoss()
+        self.mae         = nn.L1Loss()
         self.ssim        = SSIM()
     def forward(self, y_pred, y_true):
         mse_loss  = self.mse(y_pred, y_true)
+        mae_loss  = self.mae(y_pred, y_true)
         ssim_loss = 1 - self.ssim(y_pred, y_true)
-        return self.mse_weight*mse_loss + self.ssim_weight*ssim_loss
+        lp_loss = self.mse_weight*mse_loss + (1-self.mse_weight)*mae_loss
+        return (1-self.ssim_weight)*lp_loss + self.ssim_weight*ssim_loss
     
 class PatchEmbedding(nn.Module):
     '''
