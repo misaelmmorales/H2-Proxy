@@ -1,8 +1,7 @@
 # H2-Proxy
 
 <p align="center">
-  <img src="https://github.com/misaelmmorales/CO2-Monitor-Optim/blob/main/figures/figure3.png" width="1000"/>
-  <img src="https://github.com/misaelmmorales/CO2-Monitor-Optim/blob/main/figures/Figure%2010.png" width="1000"/>
+  <img src="https://github.com/misaelmmorales/H2-Proxy/blob/main/cushion/cushion.jpg" width="1000"/>
 </p>
 
 
