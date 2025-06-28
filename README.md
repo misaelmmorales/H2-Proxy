@@ -1,5 +1,7 @@
 # H2-Proxy
 
+Mao, S., Chen, B., bf Morales, M. M., Malki, M., and Mehana, M. (2024). Cushion gas effects on hydrogen storage in porous rocks: Insights from reservoir simulation and deep learning. <em>Hydrogen Energy</em>. https://doi.org/10.1016/j.ijhydene.2024.04.288.
+
 <p align="center">
   <img src="https://github.com/misaelmmorales/H2-Proxy/blob/main/cushion/cushion.jpg" width="1000"/>
 </p>
