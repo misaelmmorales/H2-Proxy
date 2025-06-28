@@ -1,11 +1,18 @@
 # H2-Proxy
+
+<p align="center">
+  <img src="https://github.com/misaelmmorales/CO2-Monitor-Optim/blob/main/figures/figure3.png" width="1000"/>
+  <img src="https://github.com/misaelmmorales/CO2-Monitor-Optim/blob/main/figures/Figure%2010.png" width="1000"/>
+</p>
+
+
+<!-- 
 proxy modeling for subsurface H2 storage
 
 256x256x1 SGEMS params: 
 (Max, Med, Min) = (100, 50, 25)
 (Nugget, Contrib) = (0.01, 0.3)
 
-<!-- 
 To-Do:
 1) Create (500) 256x256x1 {Kx, $\phi$} Gaussian Fields -> kx from SGEMS, $\phi$ from KZ
 2) Create (500) 256x256x1 {Kx, $\phi$} Fluvial fields -> from [MLTrainingImages](https://github.com/misaelmmorales/MLTrainingImages) (slice 2D)
@@ -21,6 +28,4 @@ Go into Anaconda Navigator and edit condarc settings to include http and https p
 https://machinelearningmastery.com/develop-your-first-neural-network-with-pytorch-step-by-step/
 https://medium.com/swlh/training-deep-neural-networks-on-a-gpu-with-pytorch-11079d89805
 https://appsilon.com/visualize-pytorch-neural-networks/
-
 -->
-
